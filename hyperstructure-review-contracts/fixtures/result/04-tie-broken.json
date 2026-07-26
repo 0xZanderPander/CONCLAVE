@@ -1,0 +1,72 @@
+{
+  "contract_version": "review-result/v1",
+  "review_session_id": "rs_glm_giveaway_20260724_1200",
+  "request_idempotency_key": "review_bc_glm_giveaway_2026_07_dep_a_2026-07-24T12:00Z",
+  "occurrence_id": "occ_rp_meta_giveaway_r4_20260724T1200Z",
+  "task_pack_ref": "marketing-ads/v1",
+  "review_plan_ref": "rp_meta_giveaway",
+  "review_plan_revision": 4,
+  "request_snapshot_hash": "sha256:PLACEHOLDER_matches_request_04",
+  "evidence_version": "ev_2026-07-24T12:00Z_r1",
+  "status": "caller_decision_required",
+  "recommendation": {
+    "category": "operational_change",
+    "summary": "Reviewer C independently found the creative-level CPA gap actionable, then selected A's recommendation to pause cr_b after A/B disagreement survived cross review.",
+    "actions": [
+      {
+        "type": "pause_creative",
+        "target_id": "cr_b",
+        "magnitude": null,
+        "urgency": "normal",
+        "confidence": 0.78
+      }
+    ],
+    "experiment": null
+  },
+  "claims": [
+    {
+      "statement": "cr_b CPA is about 60% above cr_a CPA at equal spend and adequate conversion volume.",
+      "evidence_references": ["sections.evidence.creative_breakdown"],
+      "alternative_explanations": ["unreported delivery differences inside the audience"]
+    },
+    {
+      "statement": "Pausing cr_b is within the supplied action ontology but remains a caller decision.",
+      "evidence_references": ["action_ontology.allowed_action_types", "sections.policy.change_limits"],
+      "alternative_explanations": []
+    }
+  ],
+  "disagreement": {
+    "level": "tie_broken",
+    "summary": "A maintained pause_creative while B maintained collect_more_data. C assessed the evidence independently, then selected A.",
+    "distance": 0.44,
+    "tolerance": 0.25,
+    "triggered_by": ["material_a", "weighted_distance"],
+    "hard_triggers": [],
+    "agreements": ["tracking is healthy", "cr_b underperforms cr_a"],
+    "disagreements": ["whether the evidence supports immediate operational change"]
+  },
+  "baseline": { "category": "operational_change", "changed_by_panel": false },
+  "confidence": 0.78,
+  "evidence_quality": "adequate",
+  "missing_evidence": ["placement-level delivery split by creative"],
+  "risk": "medium",
+  "review_after_hours": 8,
+  "panel_metadata": {
+    "comparator_profile": "marketing-ads/v1",
+    "reviewers": [
+      { "slot": "A", "reviewer_type": "model", "stage": "independent", "round": 1, "provider": "nous-portal", "model": "hermes-4", "prompt_version": "adpack-p1", "schema_version": "result-v1", "tokens": 2100, "latency_ms": 4200, "cost_usd": 0.011 },
+      { "slot": "B", "reviewer_type": "model", "stage": "independent", "round": 1, "provider": "openrouter", "model": "claude-sonnet-5", "prompt_version": "adpack-p1", "schema_version": "result-v1", "tokens": 2200, "latency_ms": 5000, "cost_usd": 0.018 },
+      { "slot": "A", "reviewer_type": "model", "stage": "cross_review", "round": 2, "provider": "nous-portal", "model": "hermes-4", "prompt_version": "adpack-cross-p1", "schema_version": "result-v1", "tokens": 1200, "latency_ms": 2800, "cost_usd": 0.006 },
+      { "slot": "B", "reviewer_type": "model", "stage": "cross_review", "round": 2, "provider": "openrouter", "model": "claude-sonnet-5", "prompt_version": "adpack-cross-p1", "schema_version": "result-v1", "tokens": 1300, "latency_ms": 3200, "cost_usd": 0.01 },
+      { "slot": "C", "reviewer_type": "model", "stage": "independent", "round": 1, "provider": "openai", "model": "gpt-5", "prompt_version": "adpack-judge-p1", "schema_version": "result-v1", "tokens": 1900, "latency_ms": 3900, "cost_usd": 0.02 },
+      { "slot": "C", "reviewer_type": "model", "stage": "judging", "round": 2, "provider": "openai", "model": "gpt-5", "prompt_version": "adpack-judge-p1", "schema_version": "result-v1", "tokens": 1100, "latency_ms": 2700, "cost_usd": 0.012 }
+    ],
+    "tie_breaker": {
+      "verdict": "select_a",
+      "selected_slot": "A",
+      "confidence": 0.78,
+      "evidence_quality": "adequate",
+      "unresolved_claims": ["placement-level delivery could explain part of the creative gap"]
+    }
+  }
+}

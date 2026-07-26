@@ -1,0 +1,219 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hyperstructure/contracts/review-request.v1.schema.json",
+  "title": "review-request/v1",
+  "description": "Sample fixture, or a future optional caller, -> Conclave. A complete, redacted evidence package. This is currently a local Conclave test contract and creates no Marketing OS dependency.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "caller",
+    "subject",
+    "idempotency_key",
+    "evidence_version",
+    "review_trigger",
+    "classification",
+    "sections",
+    "quality",
+    "allowed_recommendations",
+    "action_ontology",
+    "materiality",
+    "comparator",
+    "task_pack_ref",
+    "review_plan_ref",
+    "review_plan_revision"
+  ],
+  "properties": {
+    "contract_version": { "const": "review-request/v1" },
+    "caller": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caller_id", "auth_subject"],
+      "properties": {
+        "caller_id": { "type": "string", "examples": ["hyperstructure-marketing-os"] },
+        "auth_subject": { "type": "string", "description": "Authenticated caller identity, not an end user." }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "description": "Opaque caller-owned identifiers. Conclave treats these as blind handles.",
+      "additionalProperties": false,
+      "required": ["business_campaign_id", "deployment_id"],
+      "properties": {
+        "business_campaign_id": { "type": "string" },
+        "deployment_id": { "type": "string" },
+        "conversion_event_id": { "type": "string" }
+      }
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "One review run per caller, occurrence_id, idempotency_key, evidence_version, and plan revision. Retries reuse it."
+    },
+    "evidence_version": { "type": "string" },
+    "review_trigger": {
+      "type": "object",
+      "description": "Identifies the plan occurrence or manual trigger this caller-pushed evidence satisfies. Conclave validates it against the pinned plan revision and uses occurrence_id for schedule deduplication.",
+      "additionalProperties": false,
+      "required": ["occurrence_id", "kind", "due_at"],
+      "properties": {
+        "occurrence_id": { "type": "string" },
+        "kind": {
+          "enum": [
+            "scheduled_a",
+            "scheduled_b",
+            "failed_goal",
+            "manual"
+          ]
+        },
+        "due_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "classification": {
+      "type": "object",
+      "description": "Every field or field subtree in `sections` and `quality` is covered by a JSON-path-like reference. A path classifies all descendants unless a more specific path overrides it. Conformance checks completeness, uniqueness, and path existence.",
+      "additionalProperties": false,
+      "required": ["evidence", "context", "policy", "goal", "quality"],
+      "properties": {
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "context": { "type": "array", "items": { "type": "string" } },
+        "policy": { "type": "array", "items": { "type": "string" } },
+        "goal": { "type": "array", "items": { "type": "string" } },
+        "quality": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence", "context", "policy", "goal"],
+      "properties": {
+        "evidence": {
+          "type": "object",
+          "description": "Metrics and observations only. No raw personal content, no platform credentials.",
+          "additionalProperties": true
+        },
+        "context": { "type": "object", "additionalProperties": true },
+        "policy": {
+          "type": "object",
+          "description": "Caller-declared constraints reviewers must respect. Conclave validates its result against the submitted ontology; the caller independently enforces final policy.",
+          "additionalProperties": true
+        },
+        "goal": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "description": "Deterministic caller-computed data quality. Separate from any reviewer confidence.",
+      "additionalProperties": false,
+      "required": ["tracking_health", "freshness", "is_partial", "optimization_eligible"],
+      "properties": {
+        "tracking_health": { "enum": ["healthy", "degraded", "unhealthy"] },
+        "freshness": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["observed_at", "metric_period_start", "metric_period_end"],
+          "properties": {
+            "observed_at": { "type": "string", "format": "date-time" },
+            "metric_period_start": { "type": "string", "format": "date-time" },
+            "metric_period_end": { "type": "string", "format": "date-time" },
+            "attribution_window": { "type": "string" },
+            "provider_revision": { "type": "string" }
+          }
+        },
+        "is_partial": { "type": "boolean" },
+        "evidence_quality_label": {
+          "enum": ["strong", "adequate", "weak", "insufficient"]
+        },
+        "optimization_eligible": {
+          "type": "boolean",
+          "description": "If false, no recommendation may propose a spend or publish change. Set false whenever tracking is unhealthy, evidence is stale, or data is materially partial."
+        }
+      }
+    },
+    "allowed_recommendations": {
+      "type": "array",
+      "description": "Caller-owned action ontology. Conclave validates reviewer output against this set only.",
+      "items": {
+        "enum": [
+          "observe",
+          "collect_more_data",
+          "experiment",
+          "operational_change",
+          "tracking_or_data_problem",
+          "freeze"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "action_ontology": {
+      "type": "object",
+      "description": "Caller-owned action and experiment vocabulary. Conclave may recommend only registered types.",
+      "additionalProperties": false,
+      "required": ["profile", "allowed_action_types"],
+      "properties": {
+        "profile": { "type": "string" },
+        "allowed_action_types": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "experiment_schema_ref": { "type": ["string", "null"] }
+      }
+    },
+    "materiality": {
+      "type": "object",
+      "description": "Caller-supplied thresholds that define what counts as a material result for this subject.",
+      "additionalProperties": true
+    },
+    "comparator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "tolerance", "dimensions", "hard_triggers"],
+      "properties": {
+        "profile": { "type": "string" },
+        "tolerance": { "type": "number", "minimum": 0, "maximum": 1 },
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "weight"],
+            "properties": {
+              "name": {
+                "enum": [
+                  "recommendation_disposition",
+                  "action_type_direction",
+                  "target_scope",
+                  "expected_goal_impact",
+                  "evidence_sufficiency_quality",
+                  "magnitude_exposure",
+                  "risk_materiality",
+                  "urgency_timing"
+                ]
+              },
+              "weight": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          },
+          "minItems": 1
+        },
+        "hard_triggers": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "tracking_health_conflict",
+              "goal_or_primary_conversion_conflict",
+              "opposite_action_direction",
+              "incompatible_target_scope",
+              "evidence_eligibility_conflict",
+              "action_outside_ontology",
+              "failed_goal_movement"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "task_pack_ref": { "type": "string" },
+    "review_plan_ref": { "type": "string" },
+    "review_plan_revision": { "type": "integer", "minimum": 1 }
+  }
+}

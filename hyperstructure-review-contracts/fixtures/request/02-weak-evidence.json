@@ -1,0 +1,97 @@
+{
+  "contract_version": "review-request/v1",
+  "caller": {
+    "caller_id": "hyperstructure-marketing-os",
+    "auth_subject": "marketing-os-service"
+  },
+  "subject": {
+    "business_campaign_id": "bc_glm_giveaway_2026_07",
+    "deployment_id": "dep_meta_glm_giveaway_a",
+    "conversion_event_id": "conv_eligible_giveaway_entry_completed"
+  },
+  "idempotency_key": "review_bc_glm_giveaway_2026_07_dep_a_2026-07-19T08:00Z",
+  "evidence_version": "ev_2026-07-19T08:00Z_r1",
+  "review_trigger": {
+    "occurrence_id": "occ_rp_meta_giveaway_r4_20260719T0800Z",
+    "kind": "scheduled_b",
+    "due_at": "2026-07-19T08:00:00Z"
+  },
+  "classification": {
+    "evidence": ["sections.evidence.metrics"],
+    "context": ["sections.context.campaign"],
+    "policy": ["sections.policy.spend_caps"],
+    "goal": ["sections.goal.primary_conversion"],
+    "quality": ["quality.tracking_health", "quality.freshness", "quality.is_partial", "quality.evidence_quality_label", "quality.optimization_eligible"]
+  },
+  "sections": {
+    "evidence": {
+      "metrics": {
+        "spend_usd": 55.0,
+        "impressions": 4200,
+        "clicks": 61,
+        "primary_conversions": 6,
+        "cpa_usd": 9.17,
+        "target_cpa_usd": 3.5
+      }
+    },
+    "context": {
+      "campaign": { "objective": "giveaway_entry", "platform": "meta", "days_running": 1 }
+    },
+    "policy": { "spend_caps": { "daily_usd": 150 } },
+    "goal": { "primary_conversion": "eligible_giveaway_entry_completed" }
+  },
+  "quality": {
+    "tracking_health": "healthy",
+    "freshness": {
+      "observed_at": "2026-07-19T08:00:00Z",
+      "metric_period_start": "2026-07-18T20:00:00Z",
+      "metric_period_end": "2026-07-19T07:00:00Z",
+      "attribution_window": "7d_click_1d_view",
+      "provider_revision": "r1"
+    },
+    "is_partial": true,
+    "evidence_quality_label": "insufficient",
+    "optimization_eligible": false
+  },
+  "allowed_recommendations": [
+    "observe", "collect_more_data", "experiment",
+    "operational_change", "tracking_or_data_problem", "freeze"
+  ],
+  "action_ontology": {
+    "profile": "marketing-ads/v1",
+    "allowed_action_types": [
+      "pause_creative", "retain_creative", "collect_more_data",
+      "diagnose_tracking", "freeze_scope", "propose_experiment",
+      "budget_increase", "budget_decrease", "creative_rotation", "audience_change"
+    ],
+    "experiment_schema_ref": "marketing-ads/experiment-v1"
+  },
+  "materiality": {
+    "min_impressions": 1000,
+    "min_spend_usd": 50,
+    "cpa_deviation_material_pct": 0.25
+  },
+  "comparator": {
+    "profile": "marketing-ads/v1",
+    "tolerance": 0.25,
+    "dimensions": [
+      { "name": "recommendation_disposition", "weight": 0.22 },
+      { "name": "action_type_direction", "weight": 0.22 },
+      { "name": "target_scope", "weight": 0.14 },
+      { "name": "expected_goal_impact", "weight": 0.12 },
+      { "name": "evidence_sufficiency_quality", "weight": 0.10 },
+      { "name": "magnitude_exposure", "weight": 0.08 },
+      { "name": "risk_materiality", "weight": 0.07 },
+      { "name": "urgency_timing", "weight": 0.05 }
+    ],
+    "hard_triggers": [
+      "tracking_health_conflict", "goal_or_primary_conversion_conflict",
+      "opposite_action_direction", "incompatible_target_scope",
+      "evidence_eligibility_conflict", "action_outside_ontology",
+      "failed_goal_movement"
+    ]
+  },
+  "task_pack_ref": "marketing-ads/v1",
+  "review_plan_ref": "rp_meta_giveaway",
+  "review_plan_revision": 4
+}

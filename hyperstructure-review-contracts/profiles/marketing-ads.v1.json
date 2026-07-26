@@ -1,0 +1,40 @@
+{
+  "profile": "marketing-ads/v1",
+  "tolerance": 0.25,
+  "dimensions": [
+    { "name": "recommendation_disposition", "weight": 0.22 },
+    { "name": "action_type_direction", "weight": 0.22 },
+    { "name": "target_scope", "weight": 0.14 },
+    { "name": "expected_goal_impact", "weight": 0.12 },
+    { "name": "evidence_sufficiency_quality", "weight": 0.10 },
+    { "name": "magnitude_exposure", "weight": 0.08 },
+    { "name": "risk_materiality", "weight": 0.07 },
+    { "name": "urgency_timing", "weight": 0.05 }
+  ],
+  "hard_triggers": [
+    "tracking_health_conflict",
+    "goal_or_primary_conversion_conflict",
+    "opposite_action_direction",
+    "incompatible_target_scope",
+    "evidence_eligibility_conflict",
+    "action_outside_ontology",
+    "failed_goal_movement"
+  ],
+  "distance_scale": {
+    "same": 0.0,
+    "minor": 0.25,
+    "meaningful": 0.5,
+    "major": 0.75,
+    "conflict": 1.0
+  },
+  "within_tolerance_merge": {
+    "require_same": ["recommendation_disposition", "action_type_direction", "target_scope"],
+    "choose": {
+      "magnitude_exposure": "more_conservative",
+      "risk_materiality": "higher",
+      "evidence_sufficiency_quality": "lower",
+      "urgency_timing": "earlier_safe_review"
+    },
+    "preserve_minority_concerns": true
+  }
+}

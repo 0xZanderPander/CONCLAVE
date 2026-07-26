@@ -1,0 +1,112 @@
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+from conclave.api.app import create_app
+from conclave.config import Settings
+from conclave.fixtures import load_request_fixture
+from tests.helpers import create_test_engine
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+@pytest.mark.anyio
+async def test_local_api_accepts_and_runs_a_fixture_review() -> None:
+    engine = create_test_engine()
+    app = create_app(
+        settings=Settings(database_url="sqlite+pysqlite://"),
+        engine=engine,
+        seed_design_fixtures=True,
+    )
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            assert (await client.get("/health")).json() == {"status": "ok"}
+            assert (await client.get("/ready")).json() == {"status": "ready"}
+
+            document = load_request_fixture()
+            created = await client.post("/reviews", json=document)
+            assert created.status_code == 201
+            payload = created.json()
+            assert payload["state"] == "snapshotted"
+
+            repeated = await client.post("/reviews", json=document)
+            assert repeated.status_code == 201
+            assert repeated.json()["review_session_id"] == payload["review_session_id"]
+
+            retrieved = await client.get(f"/reviews/{payload['review_session_id']}")
+            assert retrieved.status_code == 200
+            assert retrieved.json()["snapshot_hash"] == payload["snapshot_hash"]
+
+            completed = await client.post(
+                f"/reviews/{payload['review_session_id']}/run",
+                json={"path": "a_only"},
+            )
+            assert completed.status_code == 200
+            assert completed.json()["state"] == "result_returned"
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_local_api_rejects_an_invalid_contract() -> None:
+    engine = create_test_engine()
+    app = create_app(
+        settings=Settings(database_url="sqlite+pysqlite://"),
+        engine=engine,
+        seed_design_fixtures=True,
+    )
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post("/reviews", json={"not": "a review request"})
+        assert response.status_code == 422
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_local_scheduler_endpoint_creates_fixture_work() -> None:
+    engine = create_test_engine()
+    app = create_app(
+        settings=Settings(database_url="sqlite+pysqlite://"),
+        engine=engine,
+        seed_design_fixtures=True,
+    )
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/scheduler/tick",
+                json={"at": "2026-07-24T16:00:00Z"},
+            )
+        assert response.status_code == 200
+        scheduled = response.json()["scheduled"]
+        assert len(scheduled) == 1
+        assert scheduled[0]["slots_due"] == ["A", "B"]
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            processed = await client.post(
+                "/worker/run-once",
+                params={"worker_id": "api-worker", "path": "ab_agreement"},
+            )
+            empty = await client.post(
+                "/worker/run-once",
+                params={"worker_id": "api-worker", "path": "ab_agreement"},
+            )
+        assert processed.status_code == 200
+        assert processed.json()["state"] == "result_returned"
+        assert empty.json() == {"processed": False}
+    finally:
+        engine.dispose()

@@ -1,0 +1,304 @@
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    event,
+    inspect,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+class ImmutableLedgerRecordError(RuntimeError):
+    pass
+
+
+class PinnedSessionIdentityError(RuntimeError):
+    pass
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class ReviewPlanRecord(Base):
+    __tablename__ = "review_plans"
+
+    plan_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    deployment_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class ReviewPlanRevisionRecord(Base):
+    __tablename__ = "review_plan_revisions"
+    __table_args__ = (UniqueConstraint("plan_id", "revision", name="uq_review_plan_revision"),)
+
+    revision_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    plan_id: Mapped[str] = mapped_column(
+        ForeignKey("review_plans.plan_id"), nullable=False, index=True
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(71), nullable=False)
+    configuration: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+    plan: Mapped[ReviewPlanRecord] = relationship()
+
+
+class ReviewerSlotRecord(Base):
+    __tablename__ = "reviewer_slots"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["plan_id", "plan_revision"],
+            ["review_plan_revisions.plan_id", "review_plan_revisions.revision"],
+        ),
+        UniqueConstraint(
+            "plan_id",
+            "plan_revision",
+            "slot",
+            name="uq_reviewer_slot_revision",
+        ),
+    )
+
+    reviewer_slot_id: Mapped[str] = mapped_column(String(220), primary_key=True)
+    plan_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    plan_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    slot: Mapped[str] = mapped_column(String(1), nullable=False)
+    reviewer_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(100))
+    model: Mapped[str | None] = mapped_column(String(160))
+    role_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class ReviewOccurrenceRecord(Base):
+    __tablename__ = "review_occurrences"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["plan_id", "plan_revision"],
+            ["review_plan_revisions.plan_id", "review_plan_revisions.revision"],
+        ),
+        UniqueConstraint(
+            "plan_id",
+            "plan_revision",
+            "due_at",
+            "trigger_kind",
+            name="uq_review_occurrence_schedule",
+        ),
+    )
+
+    occurrence_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    plan_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    plan_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    trigger_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class SchedulerWorkItemRecord(Base):
+    __tablename__ = "scheduler_work_items"
+    __table_args__ = (UniqueConstraint("occurrence_id", name="uq_scheduler_work_item_occurrence"),)
+
+    work_item_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    occurrence_id: Mapped[str] = mapped_column(
+        ForeignKey("review_occurrences.occurrence_id"), nullable=False
+    )
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
+    claimed_by: Mapped[str | None] = mapped_column(String(160))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(String(1000))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+
+class ReviewSessionRecord(Base):
+    __tablename__ = "review_sessions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["plan_id", "plan_revision"],
+            ["review_plan_revisions.plan_id", "review_plan_revisions.revision"],
+        ),
+        UniqueConstraint(
+            "caller_id",
+            "occurrence_id",
+            "evidence_version",
+            "plan_revision",
+            name="uq_review_session_identity",
+        ),
+        Index(
+            "ix_review_sessions_plan_revision",
+            "plan_id",
+            "plan_revision",
+        ),
+    )
+
+    session_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    caller_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    occurrence_id: Mapped[str] = mapped_column(
+        ForeignKey("review_occurrences.occurrence_id"), nullable=False, index=True
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(240), nullable=False)
+    evidence_version: Mapped[str] = mapped_column(String(200), nullable=False)
+    plan_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    plan_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    current_state: Mapped[str] = mapped_column(String(50), nullable=False, default="requested")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+
+class RequestSnapshotRecord(Base):
+    __tablename__ = "request_snapshots"
+    __table_args__ = (UniqueConstraint("session_id", name="uq_request_snapshot_session"),)
+
+    snapshot_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("review_sessions.session_id"), nullable=False
+    )
+    content_hash: Mapped[str] = mapped_column(String(71), nullable=False, index=True)
+    content: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class ReviewerInvocationRecord(Base):
+    __tablename__ = "reviewer_invocations"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id",
+            "reviewer_slot",
+            "stage",
+            "round",
+            name="uq_reviewer_invocation_stage",
+        ),
+    )
+
+    invocation_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("review_sessions.session_id"), nullable=False
+    )
+    reviewer_slot: Mapped[str] = mapped_column(String(1), nullable=False)
+    reviewer_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    stage: Mapped[str] = mapped_column(String(40), nullable=False)
+    round: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot_hash: Mapped[str] = mapped_column(String(71), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(100))
+    model: Mapped[str | None] = mapped_column(String(160))
+    prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending")
+    assessment_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(String(1000))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class AuditEventRecord(Base):
+    __tablename__ = "audit_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "entity_type",
+            "entity_id",
+            "event_index",
+            name="uq_audit_entity_event_index",
+        ),
+    )
+
+    audit_event_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    event_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    event_payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+def _reject_mutation(_mapper: Any, _connection: Any, target: Any) -> None:
+    raise ImmutableLedgerRecordError(
+        f"{type(target).__name__} is append-only and cannot be changed"
+    )
+
+
+for immutable_type in (
+    ReviewPlanRevisionRecord,
+    ReviewerSlotRecord,
+    ReviewOccurrenceRecord,
+    RequestSnapshotRecord,
+    AuditEventRecord,
+):
+    event.listen(immutable_type, "before_update", _reject_mutation)
+    event.listen(immutable_type, "before_delete", _reject_mutation)
+
+
+@event.listens_for(ReviewSessionRecord, "before_update")
+def _protect_session_identity(_mapper: Any, _connection: Any, target: ReviewSessionRecord) -> None:
+    state = inspect(target)
+    protected = (
+        "caller_id",
+        "occurrence_id",
+        "idempotency_key",
+        "evidence_version",
+        "plan_id",
+        "plan_revision",
+        "created_at",
+    )
+    changed = [name for name in protected if state.attrs[name].history.has_changes()]
+    if changed:
+        raise PinnedSessionIdentityError(
+            f"session identity is pinned; cannot change {', '.join(changed)}"
+        )
+
+
+@event.listens_for(SchedulerWorkItemRecord, "before_update")
+def _protect_work_item_identity(
+    _mapper: Any,
+    _connection: Any,
+    target: SchedulerWorkItemRecord,
+) -> None:
+    state = inspect(target)
+    protected = ("occurrence_id", "due_at", "created_at")
+    changed = [name for name in protected if state.attrs[name].history.has_changes()]
+    if changed:
+        raise PinnedSessionIdentityError(
+            f"work-item identity is pinned; cannot change {', '.join(changed)}"
+        )

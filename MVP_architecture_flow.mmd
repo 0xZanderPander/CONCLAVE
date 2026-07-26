@@ -1,0 +1,30 @@
+flowchart TB
+    Fixture["Sample ad-performance fixture"] --> Request["Versioned review request"]
+    FutureMarketing["Future optional Marketing OS<br/>ad-performance adapter"] -.-> Request
+    PlanAPI["Versioned review-plan API"] --> Plans["Plan revisions<br/>effective_at + audit history"]
+    Plans --> Scheduler["Database scheduler<br/>deployment-specific cadences"]
+    Scheduler --> Session["Review Session"]
+    Request --> Session
+    Session <--> Ledger[("PostgreSQL Review Ledger")]
+
+    Session --> A["Reviewer A<br/>routine assessment"]
+    A --> Baseline["A-only baseline"]
+    Baseline --> Ledger
+    A --> Expand{"B due or<br/>triggered?"}
+    Expand -->|"No + non-material"| Resolve["Reviewer adjudication"]
+    Expand -->|"Yes"| B["Reviewer B<br/>blind first round"]
+    A --> Compare["Task-pack comparator<br/>weights + hard triggers"]
+    B --> Compare
+    Compare -->|"Within tolerance"| Resolve
+    Compare -->|"Beyond tolerance<br/>or failed goal"| Cross["One bounded cross review"]
+    Cross -->|"Resolved"| Resolve
+    Cross -->|"Still disagree"| CBlind["Reviewer C<br/>blind assessment"]
+    CBlind --> CJudge["Reviewer C<br/>judge A vs B"]
+    CJudge --> Resolve
+
+    Resolve --> Result["Structured review result"]
+    Result --> Ledger
+    Result --> TestSink["Test result sink"]
+    TestSink --> Feedback["Simulated decision / outcome feedback"]
+    Result -.-> FutureMarketing
+    Feedback --> Ledger

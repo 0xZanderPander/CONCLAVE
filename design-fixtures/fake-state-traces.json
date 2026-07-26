@@ -1,0 +1,27 @@
+{
+  "traces": [
+    {
+      "id": "a_only_non_material",
+      "states": ["requested", "validated", "snapshotted", "reviewer_a", "baseline_recorded", "reviewer_adjudication", "auto_resolved", "result_returned"]
+    },
+    {
+      "id": "scheduled_a_b_agreement",
+      "states": ["requested", "validated", "snapshotted", "reviewer_a", "baseline_recorded", "reviewer_b", "comparing", "reviewer_adjudication", "auto_resolved", "result_returned"]
+    },
+    {
+      "id": "cross_review_resolves",
+      "states": ["requested", "validated", "snapshotted", "reviewer_a", "baseline_recorded", "reviewer_b", "comparing", "cross_review", "reviewer_adjudication", "caller_decision_required", "result_returned"]
+    },
+    {
+      "id": "reviewer_c_tie_break",
+      "states": ["requested", "validated", "snapshotted", "reviewer_a", "baseline_recorded", "reviewer_b", "comparing", "cross_review", "reviewer_c_independent", "reviewer_c_judging", "reviewer_adjudication", "caller_decision_required", "result_returned", "feedback_pending", "evaluated"]
+    }
+  ],
+  "invariants": {
+    "one_snapshot_per_trace": true,
+    "first_round_a_b_blind": true,
+    "one_cross_review_round": true,
+    "c_independent_before_judging": true,
+    "no_platform_write": true
+  }
+}

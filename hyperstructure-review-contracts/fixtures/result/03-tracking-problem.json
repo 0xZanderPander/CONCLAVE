@@ -1,0 +1,49 @@
+{
+  "contract_version": "review-result/v1",
+  "review_session_id": "rs_glm_giveaway_20260724_1600",
+  "request_idempotency_key": "review_bc_glm_giveaway_2026_07_dep_a_2026-07-24T16:00Z",
+  "occurrence_id": "occ_rp_meta_giveaway_r4_20260724T1600Z",
+  "task_pack_ref": "marketing-ads/v1",
+  "review_plan_ref": "rp_meta_giveaway",
+  "review_plan_revision": 4,
+  "request_snapshot_hash": "sha256:PLACEHOLDER_matches_request_03",
+  "evidence_version": "ev_2026-07-24T16:00Z_r1",
+  "status": "caller_decision_required",
+  "recommendation": {
+    "category": "tracking_or_data_problem",
+    "summary": "Primary conversions dropped to zero while spend continues and CAPI receipts are absent. This is a measurement failure, not a performance result. Diagnose tracking; do not optimize.",
+    "actions": [],
+    "experiment": null
+  },
+  "claims": [
+    {
+      "statement": "Zero conversions with sustained spend and missing server receipts indicates broken conversion delivery, not real demand collapse.",
+      "evidence_references": ["sections.evidence.metrics.note", "quality.tracking_health"],
+      "alternative_explanations": ["genuine sudden audience fatigue (low prior probability given abrupt zero)"]
+    }
+  ],
+  "disagreement": {
+    "level": "none",
+    "summary": "Both reviewers flag a tracking problem and decline to recommend any spend change.",
+    "distance": 0.0,
+    "tolerance": 0.25,
+    "triggered_by": ["scheduled_b"],
+    "hard_triggers": [],
+    "agreements": ["tracking_or_data_problem", "no optimization"],
+    "disagreements": []
+  },
+  "baseline": { "category": "tracking_or_data_problem", "changed_by_panel": false },
+  "confidence": 0.9,
+  "evidence_quality": "weak",
+  "missing_evidence": ["CAPI delivery receipts", "browser/server reconciliation for the affected window"],
+  "risk": "high",
+  "review_after_hours": null,
+  "panel_metadata": {
+    "comparator_profile": "marketing-ads/v1",
+    "reviewers": [
+      { "slot": "A", "reviewer_type": "model", "stage": "independent", "round": 1, "provider": "nous-portal", "model": "hermes-4", "prompt_version": "adpack-p1", "schema_version": "result-v1", "tokens": 1600, "latency_ms": 3500, "cost_usd": 0.008 },
+      { "slot": "B", "reviewer_type": "model", "stage": "independent", "round": 1, "provider": "openrouter", "model": "claude-sonnet-5", "prompt_version": "adpack-p1", "schema_version": "result-v1", "tokens": 1680, "latency_ms": 4100, "cost_usd": 0.013 }
+    ],
+    "tie_breaker": null
+  }
+}

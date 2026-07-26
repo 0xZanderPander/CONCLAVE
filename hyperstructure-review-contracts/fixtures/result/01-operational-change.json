@@ -1,0 +1,61 @@
+{
+  "contract_version": "review-result/v1",
+  "review_session_id": "rs_glm_giveaway_20260724_0800",
+  "request_idempotency_key": "review_bc_glm_giveaway_2026_07_dep_a_2026-07-24T08:00Z",
+  "occurrence_id": "occ_rp_meta_giveaway_r4_20260724T0800Z",
+  "task_pack_ref": "marketing-ads/v1",
+  "review_plan_ref": "rp_meta_giveaway",
+  "review_plan_revision": 4,
+  "request_snapshot_hash": "sha256:PLACEHOLDER_matches_request_01",
+  "evidence_version": "ev_2026-07-24T08:00Z_r1",
+  "status": "caller_decision_required",
+  "recommendation": {
+    "category": "operational_change",
+    "summary": "Pause creative cr_b and retain cr_a. cr_b CPA is 61% above cr_a with adequate volume.",
+    "actions": [
+      {
+        "type": "pause_creative",
+        "target_id": "cr_b",
+        "magnitude": null,
+        "urgency": "normal",
+        "confidence": 0.86
+      }
+    ],
+    "experiment": null
+  },
+  "claims": [
+    {
+      "statement": "cr_b CPA ($3.90) is 61% above cr_a CPA ($2.42) at comparable spend.",
+      "evidence_references": ["sections.evidence.creative_breakdown"],
+      "alternative_explanations": ["cr_b may target a colder segment within the same ad set"]
+    },
+    {
+      "statement": "Tracking is healthy and evidence is optimization-eligible.",
+      "evidence_references": ["quality.tracking_health", "quality.optimization_eligible"]
+    }
+  ],
+  "disagreement": {
+    "level": "within_tolerance",
+    "summary": "A and B agree on pausing cr_b; minor confidence gap only.",
+    "distance": 0.04,
+    "tolerance": 0.25,
+    "triggered_by": ["material_a"],
+    "hard_triggers": [],
+    "agreements": ["pause cr_b", "retain cr_a"],
+    "disagreements": []
+  },
+  "baseline": { "category": "operational_change", "changed_by_panel": false },
+  "confidence": 0.86,
+  "evidence_quality": "adequate",
+  "missing_evidence": ["landing-page conversion rate split by creative"],
+  "risk": "low",
+  "review_after_hours": 8,
+  "panel_metadata": {
+    "comparator_profile": "marketing-ads/v1",
+    "reviewers": [
+      { "slot": "A", "reviewer_type": "model", "stage": "independent", "round": 1, "provider": "nous-portal", "model": "hermes-4", "prompt_version": "adpack-p1", "schema_version": "result-v1", "tokens": 2100, "latency_ms": 4200, "cost_usd": 0.011 },
+      { "slot": "B", "reviewer_type": "model", "stage": "independent", "round": 1, "provider": "openrouter", "model": "claude-sonnet-5", "prompt_version": "adpack-p1", "schema_version": "result-v1", "tokens": 2240, "latency_ms": 5100, "cost_usd": 0.018 }
+    ],
+    "tie_breaker": null
+  }
+}

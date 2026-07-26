@@ -1,0 +1,85 @@
+{
+  "profile": "marketing-ads/v1",
+  "cases": [
+    {
+      "id": "identical",
+      "dimension_distances": {
+        "recommendation_disposition": 0.0,
+        "action_type_direction": 0.0,
+        "target_scope": 0.0,
+        "expected_goal_impact": 0.0,
+        "evidence_sufficiency_quality": 0.0,
+        "magnitude_exposure": 0.0,
+        "risk_materiality": 0.0,
+        "urgency_timing": 0.0
+      },
+      "hard_triggers": [],
+      "expected_distance": 0.0,
+      "expected_cross_review": false
+    },
+    {
+      "id": "magnitude_only",
+      "dimension_distances": {
+        "recommendation_disposition": 0.0,
+        "action_type_direction": 0.0,
+        "target_scope": 0.0,
+        "expected_goal_impact": 0.0,
+        "evidence_sufficiency_quality": 0.0,
+        "magnitude_exposure": 0.5,
+        "risk_materiality": 0.0,
+        "urgency_timing": 0.0
+      },
+      "hard_triggers": [],
+      "expected_distance": 0.04,
+      "expected_cross_review": false
+    },
+    {
+      "id": "change_vs_collect_more",
+      "dimension_distances": {
+        "recommendation_disposition": 1.0,
+        "action_type_direction": 1.0,
+        "target_scope": 0.0,
+        "expected_goal_impact": 0.0,
+        "evidence_sufficiency_quality": 0.0,
+        "magnitude_exposure": 0.0,
+        "risk_materiality": 0.0,
+        "urgency_timing": 0.0
+      },
+      "hard_triggers": [],
+      "expected_distance": 0.44,
+      "expected_cross_review": true
+    },
+    {
+      "id": "opposite_direction",
+      "dimension_distances": {
+        "recommendation_disposition": 0.0,
+        "action_type_direction": 1.0,
+        "target_scope": 0.0,
+        "expected_goal_impact": 0.5,
+        "evidence_sufficiency_quality": 0.0,
+        "magnitude_exposure": 0.5,
+        "risk_materiality": 0.5,
+        "urgency_timing": 0.0
+      },
+      "hard_triggers": ["opposite_action_direction"],
+      "expected_distance": 1.0,
+      "expected_cross_review": true
+    },
+    {
+      "id": "tracking_health_conflict",
+      "dimension_distances": {
+        "recommendation_disposition": 0.5,
+        "action_type_direction": 0.0,
+        "target_scope": 0.0,
+        "expected_goal_impact": 0.0,
+        "evidence_sufficiency_quality": 1.0,
+        "magnitude_exposure": 0.0,
+        "risk_materiality": 1.0,
+        "urgency_timing": 0.5
+      },
+      "hard_triggers": ["tracking_health_conflict", "evidence_eligibility_conflict"],
+      "expected_distance": 1.0,
+      "expected_cross_review": true
+    }
+  ]
+}
