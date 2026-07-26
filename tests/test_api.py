@@ -51,11 +51,20 @@ async def test_local_api_accepts_and_runs_a_fixture_review() -> None:
 
             result = await client.get(f"/reviews/{payload['review_session_id']}/result")
             audit = await client.get(f"/reviews/{payload['review_session_id']}/audit")
+            events = await client.get(
+                f"/review-sessions/{payload['review_session_id']}/events",
+                params={"after_sequence": 0, "limit": 5},
+            )
             operations = await client.get("/operations/status")
             assert result.status_code == 200
             assert result.json()["status"] == "auto_resolved"
             assert audit.status_code == 200
             assert audit.json()["invocation_count"] == 1
+            assert events.status_code == 200
+            assert len(events.json()["events"]) == 5
+            assert events.json()["events"][0]["event_id"].startswith("evt_")
+            assert events.json()["events"][0]["sequence"] == 1
+            assert events.json()["next_sequence"] == 5
             assert operations.status_code == 200
             assert operations.json()["queue"]["expired_leases"] == 0
             assert operations.json()["stale_process_ids"] == []

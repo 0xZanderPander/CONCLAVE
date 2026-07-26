@@ -30,6 +30,9 @@ flowchart TB
     Resolve --> Result["Structured review result"]
     Result --> Ledger
     Ledger --> Audit["Decision-ledger verifier"]
+    Ledger --> Dispatcher["Transport-neutral event dispatcher"]
+    Dispatcher --> TestSubscriber["In-process test / logging subscriber"]
+    Dispatcher -.-> FutureTransports["Future Discord, Telegram,<br/>Slack, or web adapters"]
     Result --> TestSink["Test result sink"]
     TestSink --> Feedback["Simulated decision / outcome feedback"]
     Result -.-> FutureMarketing

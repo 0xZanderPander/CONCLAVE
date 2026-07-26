@@ -5,6 +5,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -290,6 +291,20 @@ class RuntimeProcessRecord(Base):
     )
 
 
+class EventStreamRecord(Base):
+    __tablename__ = "event_streams"
+
+    stream_type: Mapped[str] = mapped_column(String(80), primary_key=True)
+    stream_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    last_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+
 class AuditEventRecord(Base):
     __tablename__ = "audit_events"
     __table_args__ = (
@@ -299,16 +314,83 @@ class AuditEventRecord(Base):
             "event_index",
             name="uq_audit_entity_event_index",
         ),
+        UniqueConstraint("event_id", name="uq_audit_event_public_id"),
+        Index("ix_audit_events_type_occurred", "event_type", "occurred_at"),
     )
 
     audit_event_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(String(160), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
     entity_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    session_id: Mapped[str | None] = mapped_column(String(160))
     event_index: Mapped[int] = mapped_column(Integer, nullable=False)
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    actor_type: Mapped[str | None] = mapped_column(String(40))
+    actor_id: Mapped[str | None] = mapped_column(String(160))
+    stage: Mapped[str | None] = mapped_column(String(40))
+    round_number: Mapped[int | None] = mapped_column("round", Integer)
+    summary: Mapped[str] = mapped_column(String(500), nullable=False)
     event_payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    evidence_refs: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    correlation_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    causation_id: Mapped[str | None] = mapped_column(String(160))
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class EventSubscriptionRecord(Base):
+    __tablename__ = "event_subscriptions"
+
+    subscriber_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    stream_type: Mapped[str | None] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+
+class EventDeliveryRecord(Base):
+    __tablename__ = "event_deliveries"
+    __table_args__ = (
+        Index(
+            "ix_event_deliveries_claimable",
+            "subscriber_id",
+            "status",
+            "available_at",
+            "lease_expires_at",
+        ),
+        Index("ix_event_deliveries_event_id", "event_id"),
+    )
+
+    subscriber_id: Mapped[str] = mapped_column(
+        ForeignKey("event_subscriptions.subscriber_id"),
+        primary_key=True,
+    )
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("audit_events.event_id"),
+        primary_key=True,
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    claimed_by: Mapped[str | None] = mapped_column(String(160))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(String(1000))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
     )
 
 

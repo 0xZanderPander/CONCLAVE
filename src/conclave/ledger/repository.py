@@ -4,15 +4,27 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Engine, func, or_, select
+from sqlalchemy import Engine, exists, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, aliased, sessionmaker
 
 from conclave.domain.enums import ReviewerSlot, ReviewerType, ReviewStage, ReviewState
 from conclave.domain.models import RequestIdentity
+from conclave.events.models import (
+    DomainEvent,
+    DomainEventType,
+    EventActor,
+    EventActorType,
+    PendingDomainEvent,
+)
 from conclave.ledger.models import (
     AuditEventRecord,
     Base,
+    EventDeliveryRecord,
+    EventStreamRecord,
+    EventSubscriptionRecord,
     RequestSnapshotRecord,
     ReviewerInvocationRecord,
     ReviewerSlotRecord,
@@ -33,6 +45,10 @@ class LedgerConflictError(RuntimeError):
 
 
 class WorkItemClaimError(RuntimeError):
+    pass
+
+
+class EventDeliveryClaimError(RuntimeError):
     pass
 
 
@@ -66,6 +82,37 @@ def normalize_instant(value: datetime) -> datetime:
 
 def same_instant(left: datetime, right: datetime) -> bool:
     return normalize_instant(left) == normalize_instant(right)
+
+
+def state_transition_summary(target: ReviewState) -> str:
+    summaries = {
+        ReviewState.VALIDATED: "The review request was validated.",
+        ReviewState.SNAPSHOTTED: "The immutable review snapshot is ready.",
+        ReviewState.REVIEWER_A: "Reviewer A review started.",
+        ReviewState.BASELINE_RECORDED: "The single-reviewer baseline was recorded.",
+        ReviewState.REVIEWER_B: "Reviewer B independent review started.",
+        ReviewState.COMPARING: "The reviewer assessments are ready for comparison.",
+        ReviewState.CROSS_REVIEW: "Cross review started.",
+        ReviewState.REVIEWER_C_INDEPENDENT: "Reviewer C independent assessment started.",
+        ReviewState.REVIEWER_C_JUDGING: "Reviewer C judgment started.",
+        ReviewState.REVIEWER_ADJUDICATION: "Reviewer adjudication started.",
+        ReviewState.AUTO_RESOLVED: "The review was auto-resolved.",
+        ReviewState.CALLER_DECISION_REQUIRED: "The review requires a caller decision.",
+        ReviewState.RESULT_RETURNED: "The structured review result is available.",
+        ReviewState.FEEDBACK_PENDING: "The review is awaiting optional caller feedback.",
+        ReviewState.EVALUATED: "Reviewer performance evaluation completed.",
+        ReviewState.INVALID_REQUEST: "The review request was rejected as invalid.",
+        ReviewState.STALE_OR_INELIGIBLE_EVIDENCE: (
+            "The review stopped because the evidence was stale or ineligible."
+        ),
+        ReviewState.REVIEWER_A_FAILED: "Reviewer A failed.",
+        ReviewState.REVIEWER_B_FAILED: "Reviewer B failed.",
+        ReviewState.REVIEWER_C_FAILED: "Reviewer C failed.",
+        ReviewState.AWAITING_EVIDENCE: "The review is waiting for more evidence.",
+        ReviewState.RESULT_DELIVERY_FAILED: "Review-result delivery failed.",
+        ReviewState.CANCELLED: "The review session was cancelled.",
+    }
+    return summaries[target]
 
 
 def create_schema(engine: Engine) -> None:
@@ -122,12 +169,20 @@ class LedgerRepository:
                         schema_version=assignment.schema_version,
                     )
                 )
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="review_plan_revision",
-                entity_id=revision_id,
-                event_type="plan_revision_created",
-                payload={"content_hash": record.content_hash},
+                PendingDomainEvent(
+                    event_type=DomainEventType.PLAN_REVISION_CREATED,
+                    stream_type="review_plan_revision",
+                    stream_id=revision_id,
+                    actor=EventActor(type=EventActorType.SYSTEM, id="conclave"),
+                    summary=f"Review plan revision {revision.revision} was created.",
+                    payload={
+                        "plan_id": revision.plan_id,
+                        "revision": revision.revision,
+                        "content_hash": record.content_hash,
+                    },
+                ),
             )
             db.flush()
             return record
@@ -162,12 +217,21 @@ class LedgerRepository:
                 trigger_kind=trigger_kind,
             )
             db.add(record)
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="review_occurrence",
-                entity_id=occurrence_id,
-                event_type="occurrence_created",
-                payload={"trigger_kind": trigger_kind, "due_at": due_at.isoformat()},
+                PendingDomainEvent(
+                    event_type=DomainEventType.OCCURRENCE_CREATED,
+                    stream_type="review_occurrence",
+                    stream_id=occurrence_id,
+                    actor=EventActor(type=EventActorType.SCHEDULER, id="conclave"),
+                    summary="A review occurrence was scheduled.",
+                    payload={
+                        "plan_id": plan_id,
+                        "plan_revision": plan_revision,
+                        "trigger_kind": trigger_kind,
+                        "due_at": due_at.isoformat(),
+                    },
+                ),
             )
             try:
                 db.flush()
@@ -206,12 +270,20 @@ class LedgerRepository:
                 max_attempts=max_attempts,
             )
             db.add(record)
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="scheduler_work_item",
-                entity_id=work_item_id,
-                event_type="work_item_enqueued",
-                payload={"occurrence_id": occurrence_id, "due_at": due_at.isoformat()},
+                PendingDomainEvent(
+                    event_type=DomainEventType.WORK_ITEM_ENQUEUED,
+                    stream_type="scheduler_work_item",
+                    stream_id=work_item_id,
+                    actor=EventActor(type=EventActorType.SCHEDULER, id="conclave"),
+                    summary="Scheduled review work was added to the queue.",
+                    payload={
+                        "occurrence_id": occurrence_id,
+                        "due_at": due_at.isoformat(),
+                        "max_attempts": max_attempts,
+                    },
+                ),
             )
             db.flush()
             return record
@@ -254,16 +326,21 @@ class LedgerRepository:
             record.claimed_at = now
             record.lease_expires_at = now + timedelta(seconds=lease_seconds)
             record.attempts += 1
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="scheduler_work_item",
-                entity_id=record.work_item_id,
-                event_type="work_item_claimed",
-                payload={
-                    "worker_id": worker_id,
-                    "lease_expires_at": record.lease_expires_at.isoformat(),
-                    "attempt": record.attempts,
-                },
+                PendingDomainEvent(
+                    event_type=DomainEventType.WORK_ITEM_CLAIMED,
+                    stream_type="scheduler_work_item",
+                    stream_id=record.work_item_id,
+                    actor=EventActor(type=EventActorType.WORKER, id=worker_id),
+                    summary=f"Worker {worker_id} claimed scheduled review work.",
+                    payload={
+                        "worker_id": worker_id,
+                        "lease_expires_at": record.lease_expires_at.isoformat(),
+                        "attempt": record.attempts,
+                    },
+                    occurred_at=now,
+                ),
             )
             db.flush()
             return record
@@ -292,12 +369,17 @@ class LedgerRepository:
             record.status = "completed"
             record.completed_at = now
             record.lease_expires_at = None
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="scheduler_work_item",
-                entity_id=work_item_id,
-                event_type="work_item_completed",
-                payload={"worker_id": worker_id},
+                PendingDomainEvent(
+                    event_type=DomainEventType.WORK_ITEM_COMPLETED,
+                    stream_type="scheduler_work_item",
+                    stream_id=work_item_id,
+                    actor=EventActor(type=EventActorType.WORKER, id=worker_id),
+                    summary="Scheduled review work completed.",
+                    payload={"worker_id": worker_id},
+                    occurred_at=now,
+                ),
             )
             db.flush()
             return record
@@ -333,20 +415,35 @@ class LedgerRepository:
             record.last_error = error[:1000]
             record.claimed_by = None
             record.claimed_at = None
-            self._append_event(
+            event_type = (
+                DomainEventType.WORK_ITEM_DEAD_LETTERED
+                if dead_lettered
+                else DomainEventType.WORK_ITEM_RETRY_SCHEDULED
+            )
+            summary = (
+                "Scheduled review work was moved to the dead-letter queue."
+                if dead_lettered
+                else "Scheduled review work will be retried."
+            )
+            self._persist_event(
                 db,
-                entity_type="scheduler_work_item",
-                entity_id=work_item_id,
-                event_type=(
-                    "work_item_dead_lettered" if dead_lettered else "work_item_retry_scheduled"
+                PendingDomainEvent(
+                    event_type=event_type,
+                    stream_type="scheduler_work_item",
+                    stream_id=work_item_id,
+                    actor=EventActor(type=EventActorType.WORKER, id=worker_id),
+                    summary=summary,
+                    payload={
+                        "worker_id": worker_id,
+                        "error": record.last_error,
+                        "attempt": record.attempts,
+                        "max_attempts": record.max_attempts,
+                        "available_at": (
+                            None if dead_lettered else record.available_at.isoformat()
+                        ),
+                    },
+                    occurred_at=now,
                 ),
-                payload={
-                    "worker_id": worker_id,
-                    "error": record.last_error,
-                    "attempt": record.attempts,
-                    "max_attempts": record.max_attempts,
-                    "available_at": (None if dead_lettered else record.available_at.isoformat()),
-                },
             )
             db.flush()
             return record
@@ -372,15 +469,20 @@ class LedgerRepository:
             if record.status != "claimed" or record.claimed_by != worker_id:
                 raise WorkItemClaimError("only the active lease holder may extend work")
             record.lease_expires_at = now + timedelta(seconds=lease_seconds)
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="scheduler_work_item",
-                entity_id=work_item_id,
-                event_type="work_item_lease_extended",
-                payload={
-                    "worker_id": worker_id,
-                    "lease_expires_at": record.lease_expires_at.isoformat(),
-                },
+                PendingDomainEvent(
+                    event_type=DomainEventType.WORK_ITEM_LEASE_EXTENDED,
+                    stream_type="scheduler_work_item",
+                    stream_id=work_item_id,
+                    actor=EventActor(type=EventActorType.WORKER, id=worker_id),
+                    summary="The scheduled-work lease was extended.",
+                    payload={
+                        "worker_id": worker_id,
+                        "lease_expires_at": record.lease_expires_at.isoformat(),
+                    },
+                    occurred_at=now,
+                ),
             )
             db.flush()
             return record
@@ -409,15 +511,20 @@ class LedgerRepository:
             record.available_at = now
             record.completed_at = None
             record.dead_lettered_at = None
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="scheduler_work_item",
-                entity_id=work_item_id,
-                event_type="work_item_manual_retry",
-                payload={
-                    "additional_attempts": additional_attempts,
-                    "max_attempts": record.max_attempts,
-                },
+                PendingDomainEvent(
+                    event_type=DomainEventType.WORK_ITEM_MANUAL_RETRY,
+                    stream_type="scheduler_work_item",
+                    stream_id=work_item_id,
+                    actor=EventActor(type=EventActorType.OPERATOR, id="operator"),
+                    summary="An operator returned dead-letter work to the retry queue.",
+                    payload={
+                        "additional_attempts": additional_attempts,
+                        "max_attempts": record.max_attempts,
+                    },
+                    occurred_at=now,
+                ),
             )
             db.flush()
             return record
@@ -445,12 +552,17 @@ class LedgerRepository:
             record.claimed_by = None
             record.claimed_at = None
             record.last_error = reason[:1000]
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="scheduler_work_item",
-                entity_id=work_item_id,
-                event_type="work_item_cancelled",
-                payload={"reason": record.last_error},
+                PendingDomainEvent(
+                    event_type=DomainEventType.WORK_ITEM_CANCELLED,
+                    stream_type="scheduler_work_item",
+                    stream_id=work_item_id,
+                    actor=EventActor(type=EventActorType.OPERATOR, id="operator"),
+                    summary="An operator cancelled unfinished review work.",
+                    payload={"reason": record.last_error},
+                    occurred_at=now,
+                ),
             )
             db.flush()
             return record
@@ -538,12 +650,24 @@ class LedgerRepository:
                 current_state=ReviewState.REQUESTED.value,
             )
             db.add(record)
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="review_session",
-                entity_id=session_id,
-                event_type="session_created",
-                payload={"state": ReviewState.REQUESTED.value},
+                PendingDomainEvent(
+                    event_type=DomainEventType.SESSION_CREATED,
+                    stream_type="review_session",
+                    stream_id=session_id,
+                    session_id=session_id,
+                    actor=EventActor(type=EventActorType.CALLER, id=identity.caller_id),
+                    summary="A review session was requested.",
+                    payload={
+                        "state": ReviewState.REQUESTED.value,
+                        "occurrence_id": identity.trigger.occurrence_id,
+                        "plan_id": identity.plan_id,
+                        "plan_revision": identity.plan_revision,
+                        "evidence_version": identity.evidence_version,
+                    },
+                    correlation_id=session_id,
+                ),
             )
             try:
                 db.flush()
@@ -574,12 +698,21 @@ class LedgerRepository:
                 content=content,
             )
             db.add(record)
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="review_session",
-                entity_id=session_id,
-                event_type="snapshot_stored",
-                payload={"snapshot_id": snapshot_id, "content_hash": content_hash},
+                PendingDomainEvent(
+                    event_type=DomainEventType.SNAPSHOT_STORED,
+                    stream_type="review_session",
+                    stream_id=session_id,
+                    session_id=session_id,
+                    actor=EventActor(type=EventActorType.SYSTEM, id="conclave"),
+                    summary="The immutable request snapshot was stored.",
+                    payload={
+                        "snapshot_id": snapshot_id,
+                        "content_hash": content_hash,
+                    },
+                    correlation_id=session_id,
+                ),
             )
             db.flush()
             return record
@@ -637,17 +770,29 @@ class LedgerRepository:
                 schema_version=schema_version,
             )
             db.add(record)
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="review_session",
-                entity_id=session_id,
-                event_type="reviewer_invocation_created",
-                payload={
-                    "invocation_id": invocation_id,
-                    "slot": slot.value,
-                    "stage": stage.value,
-                    "round": round_number,
-                },
+                PendingDomainEvent(
+                    event_type=DomainEventType.REVIEWER_INVOCATION_CREATED,
+                    stream_type="review_session",
+                    stream_id=session_id,
+                    session_id=session_id,
+                    actor=EventActor(type=EventActorType.SYSTEM, id="conclave"),
+                    stage=stage,
+                    round_number=round_number,
+                    summary=(
+                        f"Reviewer {slot.value} was assigned a "
+                        f"{stage.value.replace('_', '-')} assessment."
+                    ),
+                    payload={
+                        "invocation_id": invocation_id,
+                        "slot": slot.value,
+                        "reviewer_type": reviewer_type.value,
+                        "provider": provider,
+                        "model": model,
+                    },
+                    correlation_id=session_id,
+                ),
             )
             db.flush()
             return record
@@ -676,12 +821,36 @@ class LedgerRepository:
             record.status = "completed"
             record.assessment_payload = assessment_payload
             record.completed_at = completed_at
-            self._append_event(
+            if record.stage == ReviewStage.JUDGING.value:
+                summary = f"Reviewer {record.reviewer_slot} submitted a tie-break judgment."
+            elif record.stage == ReviewStage.CROSS_REVIEW.value:
+                summary = f"Reviewer {record.reviewer_slot} submitted a cross-review assessment."
+            else:
+                summary = f"Reviewer {record.reviewer_slot} submitted an independent assessment."
+            self._persist_event(
                 db,
-                entity_type="review_session",
-                entity_id=record.session_id,
-                event_type="reviewer_invocation_completed",
-                payload={"invocation_id": invocation_id},
+                PendingDomainEvent(
+                    event_type=DomainEventType.REVIEWER_INVOCATION_COMPLETED,
+                    stream_type="review_session",
+                    stream_id=record.session_id,
+                    session_id=record.session_id,
+                    actor=EventActor(
+                        type=EventActorType.REVIEWER,
+                        id=record.reviewer_slot,
+                    ),
+                    stage=ReviewStage(record.stage),
+                    round_number=record.round,
+                    summary=summary,
+                    payload={
+                        "invocation_id": invocation_id,
+                        "category": assessment_payload.get("category"),
+                        "material": assessment_payload.get("material"),
+                        "risk": assessment_payload.get("risk"),
+                    },
+                    confidence=assessment_payload.get("confidence"),
+                    correlation_id=record.session_id,
+                    occurred_at=completed_at,
+                ),
             )
             db.flush()
             return record
@@ -706,12 +875,27 @@ class LedgerRepository:
             record.status = "failed"
             record.last_error = error[:1000]
             record.completed_at = completed_at
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="review_session",
-                entity_id=record.session_id,
-                event_type="reviewer_invocation_failed",
-                payload={"invocation_id": invocation_id, "error": record.last_error},
+                PendingDomainEvent(
+                    event_type=DomainEventType.REVIEWER_INVOCATION_FAILED,
+                    stream_type="review_session",
+                    stream_id=record.session_id,
+                    session_id=record.session_id,
+                    actor=EventActor(
+                        type=EventActorType.REVIEWER,
+                        id=record.reviewer_slot,
+                    ),
+                    stage=ReviewStage(record.stage),
+                    round_number=record.round,
+                    summary=f"Reviewer {record.reviewer_slot} failed to submit an assessment.",
+                    payload={
+                        "invocation_id": invocation_id,
+                        "error": record.last_error,
+                    },
+                    correlation_id=record.session_id,
+                    occurred_at=completed_at,
+                ),
             )
             db.flush()
             return record
@@ -732,12 +916,18 @@ class LedgerRepository:
             source = ReviewState(record.current_state)
             validate_transition(source, target)
             record.current_state = target.value
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="review_session",
-                entity_id=session_id,
-                event_type="state_transitioned",
-                payload={"source": source.value, "target": target.value},
+                PendingDomainEvent(
+                    event_type=DomainEventType.STATE_TRANSITIONED,
+                    stream_type="review_session",
+                    stream_id=session_id,
+                    session_id=session_id,
+                    actor=EventActor(type=EventActorType.SYSTEM, id="conclave"),
+                    summary=state_transition_summary(target),
+                    payload={"source": source.value, "target": target.value},
+                    correlation_id=session_id,
+                ),
             )
             db.flush()
             return record
@@ -792,17 +982,25 @@ class LedgerRepository:
                 document=document,
             )
             db.add(record)
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="review_session",
-                entity_id=session_id,
-                event_type="result_recorded",
-                payload={
-                    "result_id": result_id,
-                    "result_hash": result_hash,
-                    "status": document["status"],
-                    "path": path,
-                },
+                PendingDomainEvent(
+                    event_type=DomainEventType.RESULT_RECORDED,
+                    stream_type="review_session",
+                    stream_id=session_id,
+                    session_id=session_id,
+                    actor=EventActor(type=EventActorType.SYSTEM, id="conclave"),
+                    summary="The structured review result was created.",
+                    payload={
+                        "result_id": result_id,
+                        "result_hash": result_hash,
+                        "status": document["status"],
+                        "path": path,
+                        "category": document["recommendation"]["category"],
+                    },
+                    confidence=document.get("confidence"),
+                    correlation_id=session_id,
+                ),
             )
             db.flush()
             return record
@@ -844,12 +1042,17 @@ class LedgerRepository:
                 record.heartbeat_at = now
                 record.stopped_at = None
                 record.process_metadata = metadata or {}
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="runtime_process",
-                entity_id=process_id,
-                event_type="process_started",
-                payload={"process_type": process_type},
+                PendingDomainEvent(
+                    event_type=DomainEventType.PROCESS_STARTED,
+                    stream_type="runtime_process",
+                    stream_id=process_id,
+                    actor=EventActor(type=EventActorType.SYSTEM, id=process_id),
+                    summary=f"The Conclave {process_type} process started.",
+                    payload={"process_type": process_type},
+                    occurred_at=now,
+                ),
             )
             db.flush()
             return record
@@ -894,12 +1097,17 @@ class LedgerRepository:
             record.status = "stopped"
             record.heartbeat_at = now
             record.stopped_at = now
-            self._append_event(
+            self._persist_event(
                 db,
-                entity_type="runtime_process",
-                entity_id=process_id,
-                event_type="process_stopped",
-                payload={"process_type": record.process_type},
+                PendingDomainEvent(
+                    event_type=DomainEventType.PROCESS_STOPPED,
+                    stream_type="runtime_process",
+                    stream_id=process_id,
+                    actor=EventActor(type=EventActorType.SYSTEM, id=process_id),
+                    summary=f"The Conclave {record.process_type} process stopped.",
+                    payload={"process_type": record.process_type},
+                    occurred_at=now,
+                ),
             )
             db.flush()
             return record
@@ -949,27 +1157,419 @@ class LedgerRepository:
                 )
             )
 
-    @staticmethod
-    def _append_event(
-        db: Session,
+    def append_domain_event(self, event: PendingDomainEvent) -> DomainEvent:
+        """Append a standalone typed event for a domain service."""
+        with self._sessions.begin() as db:
+            record = self._persist_event(db, event)
+            db.flush()
+            return self._to_domain_event(record)
+
+    def list_events(
+        self,
+        stream_id: str,
         *,
-        entity_type: str,
-        entity_id: str,
-        event_type: str,
-        payload: dict[str, Any],
+        stream_type: str = "review_session",
+        after_sequence: int = 0,
+        limit: int = 100,
+    ) -> list[DomainEvent]:
+        if after_sequence < 0:
+            raise ValueError("after_sequence cannot be negative")
+        if not 1 <= limit <= 200:
+            raise ValueError("limit must be between 1 and 200")
+        with self._sessions() as db:
+            records = list(
+                db.scalars(
+                    select(AuditEventRecord)
+                    .where(
+                        AuditEventRecord.entity_type == stream_type,
+                        AuditEventRecord.entity_id == stream_id,
+                        AuditEventRecord.event_index > after_sequence,
+                    )
+                    .order_by(AuditEventRecord.event_index)
+                    .limit(limit)
+                )
+            )
+            return [self._to_domain_event(record) for record in records]
+
+    def register_event_subscriber(
+        self,
+        *,
+        subscriber_id: str,
+        stream_type: str | None = None,
+    ) -> EventSubscriptionRecord:
+        with self._sessions.begin() as db:
+            existing = db.get(EventSubscriptionRecord, subscriber_id)
+            if existing is not None:
+                if existing.stream_type != stream_type:
+                    raise LedgerConflictError(
+                        "subscriber stream filter cannot change after registration"
+                    )
+                return existing
+            record = EventSubscriptionRecord(
+                subscriber_id=subscriber_id,
+                stream_type=stream_type,
+                status="active",
+            )
+            db.add(record)
+            db.flush()
+            return record
+
+    def list_unpublished_events(
+        self,
+        *,
+        subscriber_id: str,
+        limit: int = 100,
+    ) -> list[DomainEvent]:
+        if not 1 <= limit <= 200:
+            raise ValueError("limit must be between 1 and 200")
+        with self._sessions.begin() as db:
+            subscription = db.get(EventSubscriptionRecord, subscriber_id)
+            if subscription is None:
+                raise LookupError(f"unknown event subscriber {subscriber_id!r}")
+            self._backfill_event_deliveries(db, subscription)
+            records = list(
+                db.scalars(
+                    select(AuditEventRecord)
+                    .join(
+                        EventDeliveryRecord,
+                        EventDeliveryRecord.event_id == AuditEventRecord.event_id,
+                    )
+                    .where(
+                        EventDeliveryRecord.subscriber_id == subscriber_id,
+                        EventDeliveryRecord.status != "delivered",
+                    )
+                    .order_by(AuditEventRecord.audit_event_id)
+                    .limit(limit)
+                )
+            )
+            return [self._to_domain_event(record) for record in records]
+
+    def claim_next_event_delivery(
+        self,
+        *,
+        subscriber_id: str,
+        worker_id: str,
+        now: datetime,
+        lease_seconds: int = 60,
+    ) -> tuple[DomainEvent, EventDeliveryRecord] | None:
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds must be positive")
+        with self._sessions.begin() as db:
+            subscription = db.get(EventSubscriptionRecord, subscriber_id)
+            if subscription is None:
+                raise LookupError(f"unknown event subscriber {subscriber_id!r}")
+            if subscription.status != "active":
+                return None
+            self._backfill_event_deliveries(db, subscription, available_at=now)
+
+            earlier_delivery = aliased(EventDeliveryRecord)
+            earlier_event = aliased(AuditEventRecord)
+            earlier_undelivered = (
+                select(1)
+                .select_from(earlier_delivery)
+                .join(earlier_event, earlier_event.event_id == earlier_delivery.event_id)
+                .where(
+                    earlier_delivery.subscriber_id == subscriber_id,
+                    earlier_delivery.status != "delivered",
+                    earlier_event.entity_type == AuditEventRecord.entity_type,
+                    earlier_event.entity_id == AuditEventRecord.entity_id,
+                    earlier_event.event_index < AuditEventRecord.event_index,
+                )
+            )
+            row = db.execute(
+                select(EventDeliveryRecord, AuditEventRecord)
+                .join(
+                    AuditEventRecord,
+                    AuditEventRecord.event_id == EventDeliveryRecord.event_id,
+                )
+                .where(
+                    EventDeliveryRecord.subscriber_id == subscriber_id,
+                    or_(
+                        (
+                            EventDeliveryRecord.status.in_(("pending", "retry"))
+                            & (EventDeliveryRecord.available_at <= now)
+                        ),
+                        (
+                            (EventDeliveryRecord.status == "claimed")
+                            & (EventDeliveryRecord.lease_expires_at <= now)
+                        ),
+                    ),
+                    ~exists(earlier_undelivered),
+                )
+                .order_by(AuditEventRecord.audit_event_id)
+                .limit(1)
+                .with_for_update(skip_locked=True, of=EventDeliveryRecord)
+            ).first()
+            if row is None:
+                return None
+            delivery, event_record = row
+            delivery.status = "claimed"
+            delivery.claimed_by = worker_id
+            delivery.claimed_at = now
+            delivery.lease_expires_at = now + timedelta(seconds=lease_seconds)
+            delivery.attempts += 1
+            db.flush()
+            return self._to_domain_event(event_record), delivery
+
+    def complete_event_delivery(
+        self,
+        *,
+        subscriber_id: str,
+        event_id: str,
+        worker_id: str,
+        now: datetime,
+    ) -> EventDeliveryRecord:
+        with self._sessions.begin() as db:
+            record = db.scalar(
+                select(EventDeliveryRecord)
+                .where(
+                    EventDeliveryRecord.subscriber_id == subscriber_id,
+                    EventDeliveryRecord.event_id == event_id,
+                )
+                .with_for_update()
+            )
+            if record is None:
+                raise LookupError(f"unknown event delivery {subscriber_id!r}/{event_id!r}")
+            if record.status != "claimed" or record.claimed_by != worker_id:
+                raise EventDeliveryClaimError(
+                    "only the active event-delivery lease holder may complete delivery"
+                )
+            if record.lease_expires_at is not None and normalize_instant(
+                record.lease_expires_at
+            ) < normalize_instant(now):
+                raise EventDeliveryClaimError("event-delivery lease has expired")
+            record.status = "delivered"
+            record.delivered_at = now
+            record.claimed_by = None
+            record.claimed_at = None
+            record.lease_expires_at = None
+            record.last_error = None
+            db.flush()
+            return record
+
+    def fail_event_delivery(
+        self,
+        *,
+        subscriber_id: str,
+        event_id: str,
+        worker_id: str,
+        now: datetime,
+        error: str,
+        retry_delay_seconds: int = 30,
+    ) -> EventDeliveryRecord:
+        if retry_delay_seconds < 0:
+            raise ValueError("retry_delay_seconds cannot be negative")
+        with self._sessions.begin() as db:
+            record = db.scalar(
+                select(EventDeliveryRecord)
+                .where(
+                    EventDeliveryRecord.subscriber_id == subscriber_id,
+                    EventDeliveryRecord.event_id == event_id,
+                )
+                .with_for_update()
+            )
+            if record is None:
+                raise LookupError(f"unknown event delivery {subscriber_id!r}/{event_id!r}")
+            if record.status != "claimed" or record.claimed_by != worker_id:
+                raise EventDeliveryClaimError(
+                    "only the active event-delivery lease holder may fail delivery"
+                )
+            record.status = "retry"
+            record.available_at = now + timedelta(seconds=retry_delay_seconds)
+            record.claimed_by = None
+            record.claimed_at = None
+            record.lease_expires_at = None
+            record.last_error = error[:1000]
+            db.flush()
+            return record
+
+    def get_event_delivery(
+        self,
+        *,
+        subscriber_id: str,
+        event_id: str,
+    ) -> EventDeliveryRecord | None:
+        with self._sessions() as db:
+            return db.get(
+                EventDeliveryRecord,
+                {"subscriber_id": subscriber_id, "event_id": event_id},
+            )
+
+    def _backfill_event_deliveries(
+        self,
+        db: Session,
+        subscription: EventSubscriptionRecord,
+        *,
+        available_at: datetime | None = None,
+    ) -> None:
+        query = select(AuditEventRecord.event_id)
+        if subscription.stream_type is not None:
+            query = query.where(AuditEventRecord.entity_type == subscription.stream_type)
+        event_ids = list(db.scalars(query))
+        if not event_ids:
+            return
+        now = available_at or datetime.now(UTC)
+        values = [
+            {
+                "subscriber_id": subscription.subscriber_id,
+                "event_id": event_id,
+                "status": "pending",
+                "attempts": 0,
+                "available_at": now,
+                "created_at": now,
+                "updated_at": now,
+            }
+            for event_id in event_ids
+        ]
+        table = EventDeliveryRecord.__table__
+        dialect = db.get_bind().dialect.name
+        if dialect == "postgresql":
+            statement = postgresql_insert(table).values(values).on_conflict_do_nothing()
+        elif dialect == "sqlite":
+            statement = sqlite_insert(table).values(values).on_conflict_do_nothing()
+        else:
+            existing = {
+                event_id
+                for event_id in db.scalars(
+                    select(EventDeliveryRecord.event_id).where(
+                        EventDeliveryRecord.subscriber_id == subscription.subscriber_id
+                    )
+                )
+            }
+            db.add_all(
+                EventDeliveryRecord(**value)
+                for value in values
+                if value["event_id"] not in existing
+            )
+            return
+        db.execute(statement)
+
+    def _persist_event(
+        self,
+        db: Session,
+        pending: PendingDomainEvent,
     ) -> AuditEventRecord:
-        current = db.scalar(
-            select(func.max(AuditEventRecord.event_index)).where(
-                AuditEventRecord.entity_type == entity_type,
-                AuditEventRecord.entity_id == entity_id,
+        occurred_at = pending.occurred_at or datetime.now(UTC)
+        sequence = self._next_event_sequence(
+            db,
+            stream_type=pending.stream_type,
+            stream_id=pending.stream_id,
+            now=occurred_at,
+        )
+        previous_event_id = db.scalar(
+            select(AuditEventRecord.event_id).where(
+                AuditEventRecord.entity_type == pending.stream_type,
+                AuditEventRecord.entity_id == pending.stream_id,
+                AuditEventRecord.event_index == sequence - 1,
             )
         )
+        event_id = deterministic_id(
+            "evt",
+            pending.stream_type,
+            pending.stream_id,
+            sequence,
+            pending.event_type.value,
+        )
         record = AuditEventRecord(
-            entity_type=entity_type,
-            entity_id=entity_id,
-            event_index=(current or 0) + 1,
-            event_type=event_type,
-            event_payload=payload,
+            event_id=event_id,
+            entity_type=pending.stream_type,
+            entity_id=pending.stream_id,
+            session_id=pending.session_id,
+            event_index=sequence,
+            event_type=pending.event_type.value,
+            actor_type=pending.actor.type.value if pending.actor else None,
+            actor_id=pending.actor.id if pending.actor else None,
+            stage=pending.stage.value if pending.stage else None,
+            round_number=pending.round_number,
+            summary=pending.summary,
+            event_payload=pending.payload,
+            evidence_refs=list(pending.evidence_refs),
+            confidence=pending.confidence,
+            correlation_id=(pending.correlation_id or pending.session_id or pending.stream_id),
+            causation_id=pending.causation_id or previous_event_id,
+            schema_version=pending.schema_version,
+            occurred_at=occurred_at,
         )
         db.add(record)
         return record
+
+    @staticmethod
+    def _next_event_sequence(
+        db: Session,
+        *,
+        stream_type: str,
+        stream_id: str,
+        now: datetime,
+    ) -> int:
+        table = EventStreamRecord.__table__
+        values = {
+            "stream_type": stream_type,
+            "stream_id": stream_id,
+            "last_sequence": 0,
+            "created_at": now,
+            "updated_at": now,
+        }
+        dialect = db.get_bind().dialect.name
+        if dialect == "postgresql":
+            db.execute(
+                postgresql_insert(table)
+                .values(values)
+                .on_conflict_do_nothing(index_elements=["stream_type", "stream_id"])
+            )
+        elif dialect == "sqlite":
+            db.execute(
+                sqlite_insert(table)
+                .values(values)
+                .on_conflict_do_nothing(index_elements=["stream_type", "stream_id"])
+            )
+        else:
+            record = db.get(
+                EventStreamRecord,
+                {"stream_type": stream_type, "stream_id": stream_id},
+            )
+            if record is None:
+                db.add(EventStreamRecord(**values))
+                db.flush()
+        sequence = db.scalar(
+            update(EventStreamRecord)
+            .where(
+                EventStreamRecord.stream_type == stream_type,
+                EventStreamRecord.stream_id == stream_id,
+            )
+            .values(
+                last_sequence=EventStreamRecord.last_sequence + 1,
+                updated_at=now,
+            )
+            .returning(EventStreamRecord.last_sequence)
+        )
+        if sequence is None:
+            raise RuntimeError("failed to allocate an event-stream sequence")
+        return sequence
+
+    @staticmethod
+    def _to_domain_event(record: AuditEventRecord) -> DomainEvent:
+        actor = None
+        if record.actor_type is not None and record.actor_id is not None:
+            actor = EventActor(
+                type=EventActorType(record.actor_type),
+                id=record.actor_id,
+            )
+        return DomainEvent(
+            event_id=record.event_id,
+            stream_type=record.entity_type,
+            stream_id=record.entity_id,
+            session_id=record.session_id,
+            sequence=record.event_index,
+            occurred_at=record.occurred_at,
+            event_type=DomainEventType(record.event_type),
+            actor=actor,
+            stage=ReviewStage(record.stage) if record.stage else None,
+            round_number=record.round_number,
+            summary=record.summary,
+            evidence_refs=tuple(record.evidence_refs),
+            confidence=record.confidence,
+            payload=record.event_payload,
+            correlation_id=record.correlation_id,
+            causation_id=record.causation_id,
+            schema_version=record.schema_version,
+        )

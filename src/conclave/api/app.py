@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Engine, text
 
@@ -161,6 +161,26 @@ def create_app(
             "event_count": verification.event_count,
             "invocation_count": verification.invocation_count,
             "result_hash": verification.result_hash,
+        }
+
+    @app.get("/review-sessions/{session_id}/events")
+    def get_review_events(
+        session_id: str,
+        after_sequence: int = Query(default=0, ge=0),
+        limit: int = Query(default=100, ge=1, le=200),
+    ) -> dict[str, Any]:
+        if repository.get_session(session_id) is None:
+            raise HTTPException(status_code=404, detail="review session not found")
+        events = repository.list_events(
+            session_id,
+            after_sequence=after_sequence,
+            limit=limit,
+        )
+        return {
+            "stream_id": session_id,
+            "after_sequence": after_sequence,
+            "next_sequence": (events[-1].sequence if events else after_sequence),
+            "events": [event.model_dump(mode="json", by_alias=True) for event in events],
         }
 
     @app.post("/scheduler/tick")

@@ -3,8 +3,8 @@
 ## Status
 
 Active implementation roadmap for the independent Conclave MVP. Phases 1A and
-1B are complete. Phase 2 sample task-pack intake and automatic comparator
-routing are next.
+1B and the transport-neutral event boundary are complete. Phase 2 sample
+task-pack intake and automatic comparator routing are next.
 
 The Phase 1B harness deliberately selects each known panel path for testing. It
 does not yet choose a path from reviewer distance or hard triggers.
@@ -158,6 +158,42 @@ Marketing outcome store, or Marketing Learning Registry.
 - Supabase tests leave no synthetic review rows behind.
 - Supabase security checks show only expected informational notices for private
   RLS tables with no client policies.
+
+## Phase 1C: Transport-Neutral Domain Events — Complete
+
+### Built
+
+- the existing `audit_events` ledger promoted into the one canonical typed
+  domain-event history
+- stable public event IDs, per-stream sequences, actors, stage, round, safe
+  summaries, evidence references, confidence, correlation, causation, and
+  schema version
+- centralized event-type registry and validated event construction
+- atomic state mutation and event persistence
+- concurrency-safe sequence allocation through `event_streams`
+- PostgreSQL-backed subscriber delivery state, leasing, failure recording, and
+  retry
+- at-least-once delivery with consumer deduplication by `event_id`
+- in-memory, logging, and no-op publishers behind one transport-neutral
+  interface
+- read-only, sequence-paginated review-session event API
+- migration `20260726_0007`, including legacy audit-event backfill, applied to
+  the dedicated Conclave Supabase project
+- focused event, rollback, retry, deduplication, API, and PostgreSQL concurrency
+  tests
+
+Discord, Telegram, Slack, webhooks, and communication UIs are not implemented.
+A future adapter may implement `EventPublisher` and consume committed events
+without changing the Conclave review protocol.
+
+### Exit Gate
+
+- State changes and events commit or roll back together.
+- Same-stream concurrent appends cannot duplicate a sequence.
+- Subscriber failure cannot roll back or corrupt a review.
+- Failed delivery is retryable and safe for duplicate-aware consumers.
+- Events are readable without a model provider or external service.
+- The audit ledger remains the only canonical event history.
 
 ## Phase 2: Sample Ad-Performance Task-Pack Intake — Next
 
@@ -368,6 +404,9 @@ Marketing outcome store, or Marketing Learning Registry.
 - [x] Queue failures retry without duplicating completed work.
 - [x] Completed fixture results and their decision ledgers validate on
       PostgreSQL.
+- [x] Committed lifecycle operations emit typed transport-neutral events.
+- [x] Event delivery retries without changing committed review state.
+- [x] Consumers can poll by stream sequence and deduplicate by event ID.
 
 ## Explicitly Deferred
 

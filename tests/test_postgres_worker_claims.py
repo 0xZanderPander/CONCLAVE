@@ -91,6 +91,30 @@ def test_postgres_allows_exactly_one_worker_to_claim_a_work_item() -> None:
                 text("delete from review_plans where plan_id = :plan_id"),
                 {"plan_id": plan_id},
             )
+            event_parameters = {
+                "occurrence_id": occurrence_id,
+                "work_item_id": work_item_id or "",
+                "revision_id": revision_id,
+            }
+            connection.execute(
+                text(
+                    "delete from event_deliveries where event_id in "
+                    "(select event_id from audit_events "
+                    "where entity_id = :occurrence_id "
+                    "or entity_id = :work_item_id "
+                    "or entity_id = :revision_id)"
+                ),
+                event_parameters,
+            )
+            connection.execute(
+                text(
+                    "delete from event_streams "
+                    "where stream_id = :occurrence_id "
+                    "or stream_id = :work_item_id "
+                    "or stream_id = :revision_id"
+                ),
+                event_parameters,
+            )
             connection.execute(
                 text(
                     "delete from audit_events "
@@ -98,10 +122,6 @@ def test_postgres_allows_exactly_one_worker_to_claim_a_work_item() -> None:
                     "or entity_id = :work_item_id "
                     "or entity_id = :revision_id"
                 ),
-                {
-                    "occurrence_id": occurrence_id,
-                    "work_item_id": work_item_id or "",
-                    "revision_id": revision_id,
-                },
+                event_parameters,
             )
         engine.dispose()

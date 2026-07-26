@@ -3,9 +3,9 @@
 ## Status
 
 Active architecture for the independent Conclave MVP. Foundation phases 1A and
-1B are implemented and verified with local fixtures and the dedicated Conclave
-Supabase project. Phase 2 task-pack intake and automatic comparator routing are
-next.
+1B and the transport-neutral event boundary are implemented and verified
+against the dedicated Conclave Supabase project. Phase 2 task-pack intake and
+automatic comparator routing are next.
 
 The current fixture harness selects a known path so every transition can be
 tested. It does not yet infer the path from A/B distance. Sections describing
@@ -20,6 +20,7 @@ Build Conclave as a modular monolith:
 - one repository
 - one application package
 - one PostgreSQL review ledger
+- one typed event stream and outbox built from that same ledger
 - one API process
 - separate persistent scheduler and worker commands from the same package
 - versioned, deployment-editable review plans
@@ -108,6 +109,9 @@ flowchart TB
     Resolve --> Result["Structured review result"]
     Result --> Ledger
     Ledger --> Audit["Decision-ledger verifier"]
+    Ledger --> Dispatcher["Transport-neutral event dispatcher"]
+    Dispatcher --> TestSubscriber["In-process test / logging subscriber"]
+    Dispatcher -.-> FutureTransports["Future Discord, Telegram,<br/>Slack, or web adapters"]
     Result --> TestSink["Test result sink"]
     TestSink --> Feedback["Simulated decision / outcome feedback"]
     Result -.-> FutureMarketing
@@ -320,7 +324,8 @@ completed work.
 │   ├── api/                    # local fixture API, results, audit, operations
 │   ├── auditing/               # decision-ledger verification
 │   ├── contracts/              # request/result/feedback schema validation
-│   ├── ledger/                 # PostgreSQL records, queue, audit events
+│   ├── events/                 # typed envelopes and publisher boundary
+│   ├── ledger/                 # PostgreSQL records, queue, event outbox
 │   ├── orchestration/          # fixed state machine and result construction
 │   ├── plans/                  # versioned plans and schedule calculation
 │   ├── reviewers/              # common runtime and provider registry
@@ -435,7 +440,7 @@ the panel outperformed reviewer A.
 
 ## Persistence
 
-Implemented through migration `20260726_0006`:
+Implemented through migrations `20260726_0006` and `20260726_0007`:
 
 - `review_plans`
 - `review_plan_revisions`
@@ -448,6 +453,23 @@ Implemented through migration `20260726_0006`:
 - `review_results`
 - `runtime_processes`
 - `audit_events`
+- `event_streams`
+- `event_subscriptions`
+- `event_deliveries`
+
+`audit_events` remains the one canonical event history. Migration
+`20260726_0007` adds the public typed envelope and uses `event_streams` for
+atomic sequence allocation. Subscriber delivery is tracked separately in
+`event_deliveries`; a delivery failure never changes the committed review or
+event.
+
+Delivery is at least once and ordered per stream. Consumers deduplicate by the
+stable `event_id`. The exact transport extension point is
+`EventPublisher.publish(DomainEvent)`. Discord, Telegram, Slack, webhooks, and
+other presentation adapters are not implemented.
+
+See [Domain Event Stream and Future Adapter Boundary](EVENT_STREAM.md) for the
+event contract, ordering, retry, privacy, and adapter rules.
 
 Assessments, claims, baselines, disagreement, tie-break metadata, and the final
 recommendation are stored as validated structured documents in invocations and
@@ -478,6 +500,8 @@ Implemented local fixture endpoints:
 - `POST /reviews/{review_session_id}/run` — run a selected fixture path
 - `GET /reviews/{review_session_id}/result` — retrieve the structured result
 - `GET /reviews/{review_session_id}/audit` — verify the decision ledger
+- `GET /review-sessions/{review_session_id}/events` — read typed events after a
+  stream-sequence cursor
 - `POST /scheduler/tick` — expand fixture schedules
 - `POST /worker/run-once` — process one fixture work item
 - `GET /operations/status` — inspect queue and process health
@@ -504,6 +528,7 @@ feedback, and result-delivery endpoints are later-phase work.
 - immutable review records and append-only corrections
 - configurable retention and deletion of submitted evidence packages
 - no private chain-of-thought storage
+- subscriber failures isolated from committed review transactions
 
 ## Recommended Stack
 
@@ -525,6 +550,8 @@ generalized workflow DSL are not required for the MVP.
 |---|---|
 | Architecture | Modular monolith |
 | Database | PostgreSQL review ledger |
+| Event boundary | Typed `audit_events` stream with PostgreSQL delivery checkpoints |
+| Future communications | Transport adapters implement `EventPublisher` |
 | Current input | Sample fixtures |
 | Future caller boundary | Draft request/result/feedback contracts |
 | Platform access | None |

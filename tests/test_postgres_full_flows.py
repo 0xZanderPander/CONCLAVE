@@ -104,18 +104,35 @@ def test_postgres_runs_and_verifies_every_fixture_decision_path() -> None:
                 assert persisted.document["panel_metadata"]["tie_breaker"] is not None
     finally:
         with engine.begin() as connection:
+            event_scope = (
+                "(entity_type = 'review_session' and entity_id in "
+                "(select session_id from review_sessions where plan_id = :plan_id)) "
+                "or entity_id in "
+                "(select work_item_id from scheduler_work_items where occurrence_id in "
+                "(select occurrence_id from review_occurrences where plan_id = :plan_id)) "
+                "or entity_id in "
+                "(select occurrence_id from review_occurrences where plan_id = :plan_id) "
+                "or entity_id = :revision_id"
+            )
             connection.execute(
                 text(
-                    "delete from audit_events where "
-                    "(entity_type = 'review_session' and entity_id in "
-                    "(select session_id from review_sessions where plan_id = :plan_id)) "
-                    "or entity_id in "
-                    "(select work_item_id from scheduler_work_items where occurrence_id in "
-                    "(select occurrence_id from review_occurrences where plan_id = :plan_id)) "
-                    "or entity_id in "
-                    "(select occurrence_id from review_occurrences where plan_id = :plan_id) "
-                    "or entity_id = :revision_id"
+                    "delete from event_deliveries where event_id in "
+                    f"(select event_id from audit_events where {event_scope})"
                 ),
+                {"plan_id": plan_id, "revision_id": revision_id},
+            )
+            connection.execute(
+                text(
+                    "delete from event_streams where exists "
+                    "(select 1 from audit_events where "
+                    "audit_events.entity_type = event_streams.stream_type and "
+                    "audit_events.entity_id = event_streams.stream_id and "
+                    f"({event_scope}))"
+                ),
+                {"plan_id": plan_id, "revision_id": revision_id},
+            )
+            connection.execute(
+                text(f"delete from audit_events where {event_scope}"),
                 {"plan_id": plan_id, "revision_id": revision_id},
             )
             for table_name in (

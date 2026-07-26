@@ -9,12 +9,69 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 
 | Date | Rev | Requested by | Applied by | Summary |
 |---|---|---|---|---|
+| 2026-07-26 | r7 | Al | Codex | Promoted the audit ledger into a typed transport-neutral event stream and documented the future adapter boundary before Phase 2 |
 | 2026-07-26 | r6 | Al | Codex | Recorded Phase 1B implementation and Supabase verification; made automatic comparator routing the explicit Phase 2 boundary |
 | 2026-07-24 | r5 | Al | Codex | Removed Marketing MVP coupling; made fixture-based Conclave development current and the first Marketing deployment a later optional ad-performance review connection |
 | 2026-07-24 | r4 | Al | Codex | Made review timing deployment-editable through immutable plan revisions; defined A/B expansion and two-stage C judging; added Marketing-v1 weights, hard triggers, contract `0.2.0`, and executable design fixtures |
 | 2026-07-24 | r3 | Al | Codex | Separated Marketing domain ownership from the Conclave kernel; replaced direct Meta, Telegram, policy, outcome, and learning ownership with versioned request/result/feedback contracts |
 | 2026-07-24 | r2 | Al | Conclave assistant (Cowork session) | Three-reviewer panel, cadence-based ping-pong, tolerance-triggered cross review, tie-breaker, baseline, configurable adjudicator, Hermes learning seam, domain contract, testable Phase 0 gate |
 | 2026-07-14 | r1 | Al | Al | Initial Marketing-first, read-only MVP design (baseline of these docs) |
+
+---
+
+## r7 — 2026-07-26
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** `README.md`, `MVP_project_architecture.md`,
+`MVP_build_roadmap.md`, `MVP_architecture_flow.mmd`, `EVENT_STREAM.md`,
+`audit/CHANGELOG.md`, event source, migration, API, and tests
+
+### Why
+
+Future visualizations and communication adapters need a reliable way to observe
+Conclave without entering the review protocol. The existing append-only audit
+ledger was the correct starting point, but it needed typed envelopes, safe
+summaries, concurrency-safe ordering, and retryable subscriber delivery before
+it could serve as that boundary.
+
+### What changed
+
+1. `audit_events` remains the one canonical history and now stores a stable
+   public event envelope.
+2. Typed event definitions replace arbitrary event-name strings in repository
+   operations.
+3. `event_streams` atomically allocates per-stream sequence numbers and removes
+   the prior `max + 1` concurrency risk.
+4. `event_subscriptions` and `event_deliveries` provide PostgreSQL-backed
+   delivery leases, checkpoints, error recording, and retry.
+5. Subscriber delivery happens after the domain transaction commits. Subscriber
+   failure cannot roll back or corrupt Conclave review state.
+6. The event API supports read-only polling by review-session sequence.
+7. Event payloads use references and safe projections rather than full
+   snapshots, ORM records, assessment bodies, or hidden reasoning.
+8. A future Discord, Telegram, Slack, logging, or web adapter implements the
+   same `EventPublisher.publish(DomainEvent)` boundary and deduplicates by
+   `event_id`.
+9. Migration `20260726_0007`, full review flows, same-stream sequence
+   concurrency, and multi-worker delivery locking passed against the dedicated
+   Conclave Supabase project.
+10. Phase 2 task-pack intake and automatic route selection remain the immediate
+    next build.
+
+### Deferrals adjusted
+
+- The transport-neutral boundary moved ahead of Phase 2 and is complete.
+- Discord, Telegram, Slack, webhooks, chat bots, push UI, and human approval
+  capture remain unimplemented and deferred.
+
+### Not changed
+
+- The A/B/cross-review/C protocol and deterministic fixture paths are unchanged.
+- Conclave remains a decision-review system, not a communication or execution
+  engine.
+- Marketing OS remains independent. Any later Marketing connection is optional
+  ad-performance review only.
 
 ---
 

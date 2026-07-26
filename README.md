@@ -2,9 +2,10 @@
 
 ## Status
 
-Active MVP build. Foundation phases 1A and 1B are implemented and verified with
-sample data, local tests, and the dedicated Conclave Supabase project. Phase 2
-task-pack intake and automatic comparator routing are next.
+Active MVP build. Foundation phases 1A and 1B and the transport-neutral event
+boundary are implemented and verified with sample data, local tests, and the
+dedicated Conclave Supabase project. Phase 2 task-pack intake and automatic
+comparator routing are next.
 
 The current harness can deliberately replay A-only, A/B agreement,
 cross-review, and reviewer-C paths. It does not yet decide which path to take
@@ -18,6 +19,7 @@ Conclave.
 - [MVP Build Roadmap](MVP_build_roadmap.md)
 - [MVP Project Architecture](MVP_project_architecture.md)
 - [Editable MVP Architecture Flowchart](MVP_architecture_flow.mmd)
+- [Domain Event Stream and Future Adapter Boundary](EVENT_STREAM.md)
 - [Documentation Audit Log](audit/CHANGELOG.md)
 - [Draft Future Review Contracts](hyperstructure-review-contracts/README.md)
 - [Review-plan Revision Fixture](design-fixtures/review-plan-revision.json)
@@ -372,6 +374,7 @@ repeated unnecessarily.
 - reviewer-performance candidates
 - token, latency, cost, prompt, and schema accounting
 - append-only audit history
+- typed, transport-neutral domain events with retryable subscriber delivery
 - stale, invalid, and provider-failure states
 
 ### Deferred
@@ -396,6 +399,7 @@ Build a modular monolith with:
 - one API process
 - separate scheduler and worker commands from the same package
 - one PostgreSQL review ledger
+- one typed domain-event stream built from that same ledger
 - provider adapters behind `ReviewerRuntime`
 - explicit request, result, and feedback contracts
 
@@ -421,6 +425,8 @@ Completed foundation:
 7. audit verification of legal transitions, exact path, invocation count,
    snapshot identity, result hash, and result contract
 8. PostgreSQL integration tests against the dedicated Conclave Supabase project
+9. typed event envelopes, concurrency-safe stream ordering, subscriber
+   checkpoints, retry, deduplication, and a read-only event API
 
 Next:
 
