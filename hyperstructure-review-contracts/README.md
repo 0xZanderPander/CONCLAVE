@@ -65,6 +65,8 @@ not a Conclave feature request.
 ## Using this package now
 
 - **Conclave** uses the schemas and fixtures as local golden tests.
+- Conclave registers `marketing-ads/v1` as its first local task pack and
+  requires submitted comparator and action-ontology references to match it.
 - **Marketing OS has no current work or dependency here.**
 
 If a future connection is approved, both sides may then pin the same reviewed

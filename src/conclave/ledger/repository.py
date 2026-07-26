@@ -932,6 +932,101 @@ class LedgerRepository:
             db.flush()
             return record
 
+    def record_request_validation(
+        self,
+        *,
+        session_id: str,
+        review_eligible: bool,
+        optimization_eligible: bool,
+        reasons: tuple[str, ...],
+        material: bool,
+        sufficient_volume: bool,
+        cpa_deviation: float | None,
+        evidence_age_hours: float,
+    ) -> DomainEvent:
+        payload = {
+            "review_eligible": review_eligible,
+            "optimization_eligible": optimization_eligible,
+            "reasons": list(reasons),
+            "material": material,
+            "sufficient_volume": sufficient_volume,
+            "cpa_deviation": cpa_deviation,
+            "evidence_age_hours": evidence_age_hours,
+        }
+        with self._sessions.begin() as db:
+            existing = db.scalar(
+                select(AuditEventRecord).where(
+                    AuditEventRecord.entity_type == "review_session",
+                    AuditEventRecord.entity_id == session_id,
+                    AuditEventRecord.event_type == DomainEventType.REQUEST_VALIDATED.value,
+                )
+            )
+            if existing is not None:
+                if existing.event_payload != payload:
+                    raise LedgerConflictError(
+                        "request validation is immutable for a review session"
+                    )
+                return self._to_domain_event(existing)
+            record = self._persist_event(
+                db,
+                PendingDomainEvent(
+                    event_type=DomainEventType.REQUEST_VALIDATED,
+                    stream_type="review_session",
+                    stream_id=session_id,
+                    session_id=session_id,
+                    actor=EventActor(type=EventActorType.SYSTEM, id="conclave"),
+                    summary=(
+                        "The request passed task-pack validation."
+                        if review_eligible
+                        else "The request is not eligible for reviewer execution."
+                    ),
+                    payload=payload,
+                    correlation_id=session_id,
+                ),
+            )
+            db.flush()
+            return self._to_domain_event(record)
+
+    def record_comparison(
+        self,
+        *,
+        session_id: str,
+        stage: ReviewStage,
+        round_number: int,
+        distance: float,
+        weighted_distance: float,
+        tolerance: float,
+        dimension_distances: dict[str, float],
+        hard_triggers: tuple[str, ...],
+        requires_cross_review: bool,
+    ) -> DomainEvent:
+        summary = (
+            "Reviewer comparison requires bounded cross review."
+            if requires_cross_review
+            else "Reviewer comparison completed within tolerance."
+        )
+        return self.append_domain_event(
+            PendingDomainEvent(
+                event_type=DomainEventType.COMPARISON_COMPLETED,
+                stream_type="review_session",
+                stream_id=session_id,
+                session_id=session_id,
+                actor=EventActor(type=EventActorType.SYSTEM, id="conclave"),
+                stage=stage,
+                round_number=round_number,
+                summary=summary,
+                payload={
+                    "distance": distance,
+                    "weighted_distance": weighted_distance,
+                    "tolerance": tolerance,
+                    "dimension_distances": dimension_distances,
+                    "hard_triggers": list(hard_triggers),
+                    "requires_cross_review": requires_cross_review,
+                },
+                correlation_id=session_id,
+            )
+        )
+
     def get_session(self, session_id: str) -> ReviewSessionRecord | None:
         with self._sessions() as db:
             return db.get(ReviewSessionRecord, session_id)

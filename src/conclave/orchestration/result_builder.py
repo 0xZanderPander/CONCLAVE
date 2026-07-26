@@ -8,6 +8,7 @@ from conclave.ledger.models import (
     ReviewSessionRecord,
 )
 from conclave.reviewers.runtime import Assessment
+from conclave.task_packs.comparison import ComparisonResult
 
 _AUTO_RESOLVE_CATEGORIES = {
     RecommendationCategory.OBSERVE,
@@ -48,6 +49,10 @@ def build_review_result(
     snapshot: RequestSnapshotRecord,
     invocations: list[ReviewerInvocationRecord],
     path: str,
+    final_assessment: Assessment | None = None,
+    comparison: ComparisonResult | None = None,
+    route_triggers: tuple[str, ...] = (),
+    auto_resolve_enabled: bool = True,
 ) -> dict[str, Any]:
     request = snapshot.content
     baseline_invocation = _find(
@@ -59,24 +64,38 @@ def build_review_result(
     baseline = _assessment(baseline_invocation)
 
     if path == "a_only":
-        final = baseline
+        final = final_assessment or baseline
         disagreement_level = "none"
         distance: float | None = None
         disagreement_summary = "Reviewer A completed the non-material review."
     elif path == "ab_agreement":
-        final = _assessment(_find(invocations, slot="B", stage="independent", round_number=1))
+        final = final_assessment or _assessment(
+            _find(invocations, slot="B", stage="independent", round_number=1)
+        )
         disagreement_level = "within_tolerance"
-        distance = 0.0
+        distance = comparison.distance if comparison is not None else 0.0
         disagreement_summary = "Reviewers A and B remained within tolerance."
     elif path == "cross_review_resolved":
-        final = _assessment(_find(invocations, slot="A", stage="cross_review", round_number=2))
+        final = final_assessment or _assessment(
+            _find(invocations, slot="A", stage="cross_review", round_number=2)
+        )
         disagreement_level = "cross_reviewed"
-        distance = max(request["comparator"]["tolerance"] + 0.01, 0.4)
+        distance = (
+            comparison.distance
+            if comparison is not None
+            else max(request["comparator"]["tolerance"] + 0.01, 0.4)
+        )
         disagreement_summary = "A and B completed one bounded cross-review round."
     elif path == "c_tie_broken":
-        final = _assessment(_find(invocations, slot="C", stage="judging", round_number=2))
+        final = final_assessment or _assessment(
+            _find(invocations, slot="C", stage="judging", round_number=2)
+        )
         disagreement_level = "tie_broken"
-        distance = max(request["comparator"]["tolerance"] + 0.01, 0.4)
+        distance = (
+            comparison.distance
+            if comparison is not None
+            else max(request["comparator"]["tolerance"] + 0.01, 0.4)
+        )
         disagreement_summary = (
             "Disagreement survived cross review; C reviewed independently and judged the options."
         )
@@ -84,15 +103,19 @@ def build_review_result(
         raise ValueError(f"unknown orchestration path {path!r}")
 
     can_auto_resolve = (
-        path in {"a_only", "ab_agreement"}
+        auto_resolve_enabled
+        and path in {"a_only", "ab_agreement"}
         and final.category in _AUTO_RESOLVE_CATEGORIES
         and not final.actions
+        and not final.material
         and final.risk == "low"
+        and not (comparison and comparison.hard_triggers)
     )
     status = "auto_resolved" if can_auto_resolve else "caller_decision_required"
 
     trigger = request["review_trigger"]["kind"]
-    triggered_by = trigger if trigger != "manual" else "audit_sample"
+    default_trigger = trigger if trigger != "manual" else "audit_sample"
+    triggered_by = list(dict.fromkeys((default_trigger, *route_triggers)))
     reviewer_metadata = [
         {
             "slot": invocation.reviewer_slot,
@@ -148,10 +171,14 @@ def build_review_result(
             "summary": disagreement_summary,
             "distance": distance,
             "tolerance": request["comparator"]["tolerance"],
-            "triggered_by": [triggered_by],
-            "hard_triggers": [],
-            "agreements": [],
-            "disagreements": [],
+            "triggered_by": triggered_by,
+            "hard_triggers": (
+                [trigger.value for trigger in comparison.hard_triggers]
+                if comparison is not None
+                else []
+            ),
+            "agreements": list(comparison.agreements) if comparison is not None else [],
+            "disagreements": (list(comparison.disagreements) if comparison is not None else []),
         },
         "baseline": {
             "category": baseline.category.value,

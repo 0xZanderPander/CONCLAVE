@@ -4,10 +4,11 @@
 
 Active implementation roadmap for the independent Conclave MVP. Phases 1A and
 1B and the transport-neutral event boundary are complete. Phase 2 sample
-task-pack intake and automatic comparator routing are next.
+task-pack intake and automatic comparator routing are in progress.
 
-The Phase 1B harness deliberately selects each known panel path for testing. It
-does not yet choose a path from reviewer distance or hard triggers.
+The normal worker now routes from request triggers, reviewer-A materiality,
+weighted disagreement, and hard triggers. The Phase 1B fixture-path selector
+remains available only for deterministic protocol regression tests.
 
 Marketing OS is built separately and does not depend on Conclave.
 
@@ -195,11 +196,10 @@ without changing the Conclave review protocol.
 - Events are readable without a model provider or external service.
 - The audit ledger remains the only canonical event history.
 
-## Phase 2: Sample Ad-Performance Task-Pack Intake — Next
+## Phase 2: Sample Ad-Performance Task-Pack Intake — In Progress
 
-### Build
+### Built
 
-- authenticated request endpoint
 - contract and schema version validation
 - evidence-package hashing and immutability
 - declared data-classification checks
@@ -211,6 +211,18 @@ without changing the Conclave review protocol.
 - stored fixtures for deterministic tests
 - automatic route selection from materiality, weighted A/B distance, hard
   triggers, and failed-goal input
+- comparison decisions recorded as typed events
+- deterministic conservative merge for within-tolerance agreement
+- automatic worker mode with explicit fixture paths retained for tests
+- golden local tests for A-only, A/B, cross-review resolution, reviewer C, and
+  failed-goal routing
+- automatic scheduled-B routing and decision-ledger verification on the
+  dedicated Conclave Supabase project
+
+### Remaining
+
+- authenticated request endpoint before any non-local deployment
+- final Phase 2 acceptance review
 
 ### Exit Gate
 
@@ -442,12 +454,6 @@ Its scope is limited to optional ad-performance review:
 
 ## Immediate Next Build: Phase 2 Intake
 
-1. Add a registered sample task-pack object for ontology, eligibility,
-   materiality, and comparator rules.
-2. Validate freshness, partial data, tracking health, evidence quality, and
-   permitted recommendations before review.
-3. Compare structured A/B output with the approved weights and hard triggers.
-4. Select A-only, A/B agreement, cross-review, or C from recorded evidence
-   rather than a fixture path argument.
-5. Add golden end-to-end tests for each automatic route.
-6. Review the Phase 2 exit gate before choosing any real model provider.
+1. Confirm the full malformed-input and output-policy test matrix.
+2. Review the Phase 2 exit gate.
+3. Decide authentication, retention, and provider limits before Phase 3.

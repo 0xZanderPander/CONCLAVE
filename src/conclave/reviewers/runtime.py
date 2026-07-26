@@ -34,6 +34,10 @@ class Assessment(BaseModel):
     risk: Literal["low", "medium", "high"] = "low"
     confidence: float = Field(ge=0, le=1)
     evidence_quality: Literal["strong", "adequate", "weak", "insufficient"]
+    expected_goal_impact: Literal["negative", "neutral", "uncertain", "positive"] | None = None
+    tracking_health: Literal["healthy", "degraded", "unhealthy"] | None = None
+    optimization_eligible: bool | None = None
+    primary_conversion: str | None = None
     missing_evidence: tuple[str, ...] = ()
     review_after_hours: float | None = Field(default=None, ge=0)
     tie_break_verdict: (

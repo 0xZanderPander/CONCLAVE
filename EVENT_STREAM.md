@@ -74,7 +74,9 @@ The central typed registry covers lifecycle operations that exist now:
   manual retry, and cancellation
 - review-session creation
 - immutable snapshot storage
+- task-pack request validation and derived eligibility facts
 - reviewer invocation creation, completion, and failure
+- structured comparison completion, including distance and hard-trigger facts
 - state transition
 - result creation
 - runtime process start and stop

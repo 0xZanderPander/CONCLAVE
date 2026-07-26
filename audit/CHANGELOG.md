@@ -9,6 +9,7 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 
 | Date | Rev | Requested by | Applied by | Summary |
 |---|---|---|---|---|
+| 2026-07-26 | r8 | Al | Codex | Started Phase 2 with a registered Marketing-v1 task pack, eligibility validation, weighted comparison, hard triggers, and automatic route selection |
 | 2026-07-26 | r7 | Al | Codex | Promoted the audit ledger into a typed transport-neutral event stream and documented the future adapter boundary before Phase 2 |
 | 2026-07-26 | r6 | Al | Codex | Recorded Phase 1B implementation and Supabase verification; made automatic comparator routing the explicit Phase 2 boundary |
 | 2026-07-24 | r5 | Al | Codex | Removed Marketing MVP coupling; made fixture-based Conclave development current and the first Marketing deployment a later optional ad-performance review connection |
@@ -16,6 +17,63 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 | 2026-07-24 | r3 | Al | Codex | Separated Marketing domain ownership from the Conclave kernel; replaced direct Meta, Telegram, policy, outcome, and learning ownership with versioned request/result/feedback contracts |
 | 2026-07-24 | r2 | Al | Conclave assistant (Cowork session) | Three-reviewer panel, cadence-based ping-pong, tolerance-triggered cross review, tie-breaker, baseline, configurable adjudicator, Hermes learning seam, domain contract, testable Phase 0 gate |
 | 2026-07-14 | r1 | Al | Al | Initial Marketing-first, read-only MVP design (baseline of these docs) |
+
+---
+
+## r8 — 2026-07-26
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** `README.md`, `MVP_project_architecture.md`,
+`MVP_build_roadmap.md`, `MVP_architecture_flow.mmd`, `EVENT_STREAM.md`,
+`hyperstructure-review-contracts/README.md`, `audit/CHANGELOG.md`, Phase 2
+source and tests
+
+### Why
+
+Phase 1 proved each fixed review path manually. Phase 2 must select those same
+paths from a registered task-pack contract and recorded reviewer output without
+turning Conclave into a general workflow builder or coupling it to Marketing
+OS.
+
+### What changed
+
+1. `marketing-ads/v1` is the first registered local task pack, with a bounded
+   action ontology, eligibility rules, materiality calculation, comparator
+   weights, tolerance, hard triggers, and conservative merge behavior.
+2. Intake now checks task-pack identity, comparator equality, ontology,
+   freshness ordering and age, partial data, tracking health, evidence quality,
+   optimization eligibility, metrics, and materiality thresholds.
+3. Stale evidence is still stored as an immutable snapshot, then enters
+   `stale_or_ineligible_evidence`.
+4. Reviewer output is checked against the request ontology, evidence
+   eligibility, experiment rules, and budget-change policy before it is stored
+   as a completed assessment.
+5. The comparator measures all eight approved dimensions and applies hard
+   triggers before weighted tolerance.
+6. The normal orchestrator automatically expands to B, cross review, or C from
+   scheduled-B, material-A, failed-goal, audit-sample, weighted-distance, and
+   hard-conflict facts.
+7. Failed-goal input forces the bounded cross-review round but does not force C
+   after A and B converge.
+8. Comparison results are appended to the canonical typed event stream.
+9. Manual path selection remains available only as a deterministic regression
+   harness.
+10. Automatic scheduled-B routing and its decision ledger passed against the
+    dedicated Conclave Supabase project; synthetic rows were removed afterward.
+
+### Deferrals adjusted
+
+- Automatic panel routing moved into active Phase 2 implementation.
+- Caller authentication remains required before any non-local request endpoint.
+- Real model-provider selection remains after the Phase 2 acceptance review.
+
+### Not changed
+
+- The fixed A/B/cross-review/C protocol and one-round cross-review bound remain.
+- Conclave has no Marketing data connector, Meta credential, campaign control,
+  approval authority, outcome ownership, or Marketing learning ownership.
+- Discord and other communication adapters remain outside this phase.
 
 ---
 

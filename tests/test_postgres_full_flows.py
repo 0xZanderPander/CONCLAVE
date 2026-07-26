@@ -102,6 +102,32 @@ def test_postgres_runs_and_verifies_every_fixture_decision_path() -> None:
             if path == FixturePath.C_TIE_BROKEN:
                 assert persisted.document["disagreement"]["level"] == "tie_broken"
                 assert persisted.document["panel_metadata"]["tie_breaker"] is not None
+
+        automatic_occurrence_id = f"integration-flow-auto-{token}"
+        automatic_due_at = due_base + timedelta(seconds=len(_PATHS))
+        repository.add_occurrence(
+            occurrence_id=automatic_occurrence_id,
+            plan_id=plan_id,
+            plan_revision=revision.revision,
+            due_at=automatic_due_at,
+            trigger_kind="scheduled_b",
+        )
+        repository.enqueue_occurrence(
+            occurrence_id=automatic_occurrence_id,
+            due_at=automatic_due_at,
+        )
+
+        automatic = worker.run_once(
+            worker_id=f"integration-worker-{token}",
+            now=datetime.now(UTC),
+        )
+        assert automatic is not None
+        automatic_result = repository.get_result(automatic.session_id)
+        automatic_verification = auditor.verify_session(automatic.session_id)
+        assert automatic_result is not None
+        assert automatic_result.path == FixturePath.AB_AGREEMENT.value
+        assert automatic_result.document["disagreement"]["distance"] == 0
+        assert automatic_verification.path == FixturePath.AB_AGREEMENT.value
     finally:
         with engine.begin() as connection:
             event_scope = (

@@ -1,6 +1,6 @@
 import json
 from copy import deepcopy
-from datetime import UTC
+from datetime import UTC, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -52,4 +52,12 @@ def build_request_for_occurrence(
     }
     document["review_plan_ref"] = occurrence.plan_id
     document["review_plan_revision"] = occurrence.plan_revision
+    freshness = document["quality"]["freshness"]
+    freshness["observed_at"] = due_at.isoformat().replace("+00:00", "Z")
+    freshness["metric_period_start"] = (
+        (due_at - timedelta(hours=12)).isoformat().replace("+00:00", "Z")
+    )
+    freshness["metric_period_end"] = (
+        (due_at - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+    )
     return document

@@ -4,12 +4,14 @@
 
 Active MVP build. Foundation phases 1A and 1B and the transport-neutral event
 boundary are implemented and verified with sample data, local tests, and the
-dedicated Conclave Supabase project. Phase 2 task-pack intake and automatic
-comparator routing are next.
+dedicated Conclave Supabase project. Phase 2 is in progress: registered
+task-pack intake, eligibility checks, weighted comparison, hard triggers, and
+automatic route selection are implemented and verified locally and on the
+dedicated Conclave Supabase project.
 
-The current harness can deliberately replay A-only, A/B agreement,
-cross-review, and reviewer-C paths. It does not yet decide which path to take
-from reviewer distance. That decision is part of Phase 2.
+The normal worker now selects A-only, A/B agreement, cross-review, or reviewer C
+from the request trigger, reviewer-A materiality, weighted disagreement, and
+hard triggers. The explicit fixture-path selector remains a regression harness.
 
 Conclave does not depend on Marketing OS, and Marketing OS does not depend on
 Conclave.
@@ -427,14 +429,15 @@ Completed foundation:
 8. PostgreSQL integration tests against the dedicated Conclave Supabase project
 9. typed event envelopes, concurrency-safe stream ordering, subscriber
    checkpoints, retry, deduplication, and a read-only event API
+10. registered `marketing-ads/v1` task-pack validation, deterministic
+    eligibility and materiality checks, weighted comparison, hard triggers,
+    conservative merge, and automatic panel routing
 
 Next:
 
-1. implement Phase 2 sample ad-performance intake rules
-2. turn comparator weights and hard triggers into automatic runtime path
-   selection
-3. add the remaining eligibility and task-pack validation
-4. then begin real reviewer-provider selection, within approved timeout, cost,
+1. review the Phase 2 acceptance gate and malformed-input coverage
+2. decide caller authentication before any non-local request endpoint
+3. then begin real reviewer-provider selection, within approved timeout, cost,
    retention, and authentication limits
 
 See [MVP Build Roadmap](MVP_build_roadmap.md) for acceptance gates and the full

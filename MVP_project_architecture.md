@@ -5,11 +5,13 @@
 Active architecture for the independent Conclave MVP. Foundation phases 1A and
 1B and the transport-neutral event boundary are implemented and verified
 against the dedicated Conclave Supabase project. Phase 2 task-pack intake and
-automatic comparator routing are next.
+automatic comparator routing are implemented and verified locally and on
+Supabase, and now await acceptance review.
 
-The current fixture harness selects a known path so every transition can be
-tested. It does not yet infer the path from A/B distance. Sections describing
-automatic weighted comparison are the Phase 2 target.
+The normal worker infers the path from request triggers, reviewer-A
+materiality, A/B distance, and hard conflicts. The fixture harness may still
+select a known path so every protocol transition remains independently
+testable.
 
 Marketing OS is built separately and has no Conclave dependency.
 
@@ -89,7 +91,7 @@ flowchart TB
     Session <--> Ledger[("PostgreSQL Review Ledger")]
     Ops["Operational controls<br/>queue + heartbeat + stale process"] -.-> Queue
     Ops -.-> Worker
-    FixturePath["Phase 1B fixture path selector"] -.-> Expand
+    FixturePath["Regression-only fixture path selector"] -.-> Expand
 
     Session --> A["Reviewer A<br/>routine assessment"]
     A --> Baseline["A-only baseline"]
@@ -97,7 +99,7 @@ flowchart TB
     A --> Expand{"B due or<br/>triggered?"}
     Expand -->|"No + non-material"| Resolve["Reviewer adjudication"]
     Expand -->|"Yes"| B["Reviewer B<br/>blind first round"]
-    A --> Compare["Phase 2 task-pack comparator<br/>weights + hard triggers"]
+    A --> Compare["Registered task-pack comparator<br/>weights + hard triggers"]
     B --> Compare
     Compare -->|"Within tolerance"| Resolve
     Compare -->|"Beyond tolerance<br/>or failed goal"| Cross["One bounded cross review"]
@@ -331,6 +333,7 @@ completed work.
 │   ├── reviewers/              # common runtime and provider registry
 │   ├── runtime/                # persistent scheduler and worker loops
 │   ├── scheduling/             # occurrence expansion and leased work
+│   ├── task_packs/              # registered ontology, eligibility, comparator
 │   ├── config.py
 │   └── database.py
 ├── migrations/
@@ -340,8 +343,8 @@ completed work.
 └── pyproject.toml
 ```
 
-These are modules, not microservices. Later task-pack, comparison, feedback,
-and delivery modules should be added only when their phases begin.
+These are modules, not microservices. Feedback and external delivery modules
+should be added only when their phases begin.
 
 ## Component Responsibilities
 
@@ -497,7 +500,10 @@ Implemented local fixture endpoints:
 
 - `POST /reviews` — create an idempotent review
 - `GET /reviews/{review_session_id}` — inspect a review
-- `POST /reviews/{review_session_id}/run` — run a selected fixture path
+- `POST /reviews/{review_session_id}/run-auto` — run the registered task-pack
+  route
+- `POST /reviews/{review_session_id}/run` — run an explicit regression fixture
+  path
 - `GET /reviews/{review_session_id}/result` — retrieve the structured result
 - `GET /reviews/{review_session_id}/audit` — verify the decision ledger
 - `GET /review-sessions/{review_session_id}/events` — read typed events after a

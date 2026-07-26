@@ -43,7 +43,7 @@ class FixtureWorker:
         *,
         worker_id: str,
         now: datetime,
-        path: FixturePath = FixturePath.A_ONLY,
+        path: FixturePath | None = None,
         lease_seconds: int = 300,
         retry_delay_seconds: int = 30,
     ) -> WorkerResult | None:
@@ -63,11 +63,19 @@ class FixtureWorker:
                 )
             document = build_request_for_occurrence(occurrence)
             intake_result = self._intake.accept(document)
-            state = self._orchestrator.run_fixture_path(
-                intake_result.session_id,
-                path,
-                now=now,
-            )
+            if intake_result.state == ReviewState.STALE_OR_INELIGIBLE_EVIDENCE:
+                state = intake_result.state
+            elif path is None:
+                state = self._orchestrator.run(
+                    intake_result.session_id,
+                    now=now,
+                )
+            else:
+                state = self._orchestrator.run_fixture_path(
+                    intake_result.session_id,
+                    path,
+                    now=now,
+                )
             self._repository.complete_work_item(
                 work_item_id=work_item.work_item_id,
                 worker_id=worker_id,

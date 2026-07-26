@@ -33,6 +33,9 @@ async def test_local_api_accepts_and_runs_a_fixture_review() -> None:
             assert created.status_code == 201
             payload = created.json()
             assert payload["state"] == "snapshotted"
+            assert payload["optimization_eligible"]
+            assert not payload["material"]
+            assert payload["eligibility_reasons"] == []
 
             repeated = await client.post("/reviews", json=document)
             assert repeated.status_code == 201
@@ -68,6 +71,33 @@ async def test_local_api_accepts_and_runs_a_fixture_review() -> None:
             assert operations.status_code == 200
             assert operations.json()["queue"]["expired_leases"] == 0
             assert operations.json()["stale_process_ids"] == []
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_local_api_can_run_the_automatic_task_pack_route() -> None:
+    engine = create_test_engine()
+    app = create_app(
+        settings=Settings(database_url="sqlite+pysqlite://"),
+        engine=engine,
+        seed_design_fixtures=True,
+    )
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            created = await client.post("/reviews", json=load_request_fixture())
+            session_id = created.json()["review_session_id"]
+            completed = await client.post(f"/reviews/{session_id}/run-auto")
+            result = await client.get(f"/reviews/{session_id}/result")
+
+        assert completed.status_code == 200
+        assert completed.json()["state"] == "result_returned"
+        assert result.status_code == 200
+        assert result.json()["disagreement"]["level"] == "none"
+        assert len(result.json()["panel_metadata"]["reviewers"]) == 1
     finally:
         engine.dispose()
 

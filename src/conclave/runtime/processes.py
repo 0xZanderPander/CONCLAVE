@@ -69,7 +69,7 @@ class WorkerProcess:
         idle_seconds: int,
         lease_seconds: int,
         retry_delay_seconds: int,
-        path: FixturePath,
+        path: FixturePath | None,
     ) -> None:
         self._repository = repository
         self._worker = worker
@@ -87,7 +87,7 @@ class WorkerProcess:
             process_id=self._process_id,
             process_type="worker",
             now=datetime.now(UTC),
-            metadata={"path": self._path.value},
+            metadata={"path": self._path.value if self._path else "auto"},
         )
         try:
             while not stop_event.is_set():
@@ -110,7 +110,7 @@ class WorkerProcess:
                     process_id=self._process_id,
                     now=datetime.now(UTC),
                     metadata={
-                        "path": self._path.value,
+                        "path": self._path.value if self._path else "auto",
                         "last_poll_at": now.isoformat(),
                         "processed_count": processed_count,
                         "failure_count": failure_count,

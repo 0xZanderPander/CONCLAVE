@@ -113,6 +113,9 @@ def create_app(
             "review_session_id": result.session_id,
             "snapshot_hash": result.snapshot_hash,
             "state": result.state.value,
+            "optimization_eligible": result.optimization_eligible,
+            "material": result.material,
+            "eligibility_reasons": list(result.eligibility_reasons),
         }
 
     @app.get("/reviews/{session_id}")
@@ -135,6 +138,16 @@ def create_app(
     def run_review(session_id: str, request: RunFixtureRequest) -> dict[str, str]:
         try:
             state = orchestrator.run_fixture_path(session_id, request.path)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"review_session_id": session_id, "state": state.value}
+
+    @app.post("/reviews/{session_id}/run-auto")
+    def run_review_automatically(session_id: str) -> dict[str, str]:
+        try:
+            state = orchestrator.run(session_id)
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except RuntimeError as exc:
@@ -203,7 +216,7 @@ def create_app(
     @app.post("/worker/run-once")
     def worker_run_once(
         worker_id: str = "local-worker",
-        path: FixturePath = FixturePath.A_ONLY,
+        path: FixturePath | None = None,
     ) -> dict[str, Any]:
         result = worker.run_once(
             worker_id=worker_id,

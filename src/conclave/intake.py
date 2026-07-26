@@ -5,6 +5,10 @@ from conclave.contracts.validation import validate_review_request
 from conclave.domain.enums import ReviewState
 from conclave.domain.models import RequestIdentity, ReviewTrigger
 from conclave.ledger.repository import LedgerRepository
+from conclave.task_packs.registry import (
+    TaskPackRegistry,
+    default_task_pack_registry,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -12,14 +16,23 @@ class IntakeResult:
     session_id: str
     snapshot_hash: str
     state: ReviewState
+    optimization_eligible: bool
+    material: bool
+    eligibility_reasons: tuple[str, ...]
 
 
 class ReviewIntakeService:
-    def __init__(self, repository: LedgerRepository) -> None:
+    def __init__(
+        self,
+        repository: LedgerRepository,
+        task_packs: TaskPackRegistry | None = None,
+    ) -> None:
         self._repository = repository
+        self._task_packs = task_packs or default_task_pack_registry()
 
     def accept(self, document: dict[str, Any]) -> IntakeResult:
         validate_review_request(document)
+        eligibility = self._task_packs.validate_request(document)
         trigger = ReviewTrigger.model_validate(document["review_trigger"])
         identity = RequestIdentity(
             caller_id=document["caller"]["caller_id"],
@@ -59,10 +72,26 @@ class ReviewIntakeService:
             session_id=session.session_id,
             content=document,
         )
+        self._repository.record_request_validation(
+            session_id=session.session_id,
+            review_eligible=eligibility.review_eligible,
+            optimization_eligible=eligibility.optimization_eligible,
+            reasons=eligibility.reasons,
+            material=eligibility.materiality.material,
+            sufficient_volume=eligibility.materiality.sufficient_volume,
+            cpa_deviation=eligibility.materiality.cpa_deviation,
+            evidence_age_hours=eligibility.evidence_age_hours,
+        )
         if state == ReviewState.VALIDATED:
             session = self._repository.transition_session(
                 session.session_id,
                 ReviewState.SNAPSHOTTED,
+            )
+            state = ReviewState(session.current_state)
+        if state == ReviewState.SNAPSHOTTED and not eligibility.review_eligible:
+            session = self._repository.transition_session(
+                session.session_id,
+                ReviewState.STALE_OR_INELIGIBLE_EVIDENCE,
             )
             state = ReviewState(session.current_state)
 
@@ -70,4 +99,7 @@ class ReviewIntakeService:
             session_id=session.session_id,
             snapshot_hash=snapshot.content_hash,
             state=state,
+            optimization_eligible=eligibility.optimization_eligible,
+            material=eligibility.materiality.material,
+            eligibility_reasons=eligibility.reasons,
         )

@@ -84,8 +84,9 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--process-id")
     worker.add_argument(
         "--path",
-        choices=[path.value for path in FixturePath],
-        default=FixturePath.A_ONLY.value,
+        choices=["auto", *(path.value for path in FixturePath)],
+        default="auto",
+        help="Use automatic routing by default; explicit paths are a test harness.",
     )
 
     subparsers.add_parser("queue-status", help="Show work-queue and process health.")
@@ -144,7 +145,7 @@ def main() -> None:
             idle_seconds=settings.worker_idle_seconds,
             lease_seconds=settings.worker_lease_seconds,
             retry_delay_seconds=settings.worker_retry_delay_seconds,
-            path=FixturePath(args.path),
+            path=None if args.path == "auto" else FixturePath(args.path),
         )
         process.run(once=args.once, stop_event=_stop_event())
     elif args.command == "queue-status":
