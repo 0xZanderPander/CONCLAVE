@@ -2,9 +2,16 @@
 
 ## Status
 
-Proposed design for an independent Conclave MVP. Conclave is built and tested
-with sample data and fixtures. It does not depend on Marketing OS, and Marketing
-OS does not depend on Conclave.
+Active MVP build. Foundation phases 1A and 1B are implemented and verified with
+sample data, local tests, and the dedicated Conclave Supabase project. Phase 2
+task-pack intake and automatic comparator routing are next.
+
+The current harness can deliberately replay A-only, A/B agreement,
+cross-review, and reviewer-C paths. It does not yet decide which path to take
+from reviewer distance. That decision is part of Phase 2.
+
+Conclave does not depend on Marketing OS, and Marketing OS does not depend on
+Conclave.
 
 ## Design Documents
 
@@ -387,7 +394,7 @@ repeated unnecessarily.
 Build a modular monolith with:
 
 - one API process
-- one scheduler/worker process from the same package
+- separate scheduler and worker commands from the same package
 - one PostgreSQL review ledger
 - provider adapters behind `ReviewerRuntime`
 - explicit request, result, and feedback contracts
@@ -400,19 +407,29 @@ machine, modules, persistence, APIs, and security requirements.
 
 ## 10. Roadmap and Acceptance
 
-The implementation sequence is:
+Completed foundation:
 
-1. approve Conclave's local fixture contracts, ad-performance task-pack profile,
-   and review-plan revision semantics
-2. build the review ledger, plan revisions, sessions, invocations, and state
-   machine
-3. implement sample ad-performance task-pack intake
-4. add reviewer A and baseline
-5. add cadence- and trigger-based reviewer B plus weighted comparison
-6. add bounded cross review and two-stage reviewer C
-7. return structured results
-8. link optional external feedback and panel-value indicators
-9. run and harden the shadow pilot
+1. local request, result, feedback, comparator, plan, and trace fixtures
+2. PostgreSQL ledger, immutable plan revisions and snapshots, idempotent
+   scheduling, and fixed state transitions
+3. persistent scheduler and worker commands with leases, retries, dead-letter
+   recovery, cancellation, heartbeats, and stale-process reporting
+4. common reviewer-provider interface with strict structured-output validation
+   and no silent provider substitution
+5. deterministic A-only, A/B, cross-review, and two-stage C fixture paths
+6. one immutable `review-result/v1` record per completed fixture run
+7. audit verification of legal transitions, exact path, invocation count,
+   snapshot identity, result hash, and result contract
+8. PostgreSQL integration tests against the dedicated Conclave Supabase project
+
+Next:
+
+1. implement Phase 2 sample ad-performance intake rules
+2. turn comparator weights and hard triggers into automatic runtime path
+   selection
+3. add the remaining eligibility and task-pack validation
+4. then begin real reviewer-provider selection, within approved timeout, cost,
+   retention, and authentication limits
 
 See [MVP Build Roadmap](MVP_build_roadmap.md) for acceptance gates and the full
 checklist.

@@ -1,14 +1,22 @@
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
 from conclave.domain.enums import (
     ReviewerSlot,
     ReviewStage,
     ReviewState,
 )
+from conclave.ledger.models import RequestSnapshotRecord
 from conclave.ledger.repository import LedgerRepository
+from conclave.orchestration.result_builder import build_review_result
 from conclave.plans.models import SlotSchedule
-from conclave.reviewers.runtime import Assessment, ReviewCall, ReviewerRuntime
+from conclave.reviewers.runtime import (
+    Assessment,
+    PeerAssessment,
+    ReviewCall,
+    ReviewerRuntime,
+)
 
 
 class FixturePath(StrEnum):
@@ -74,14 +82,12 @@ class ReviewOrchestrator:
             round_number=1,
             assignment=revision.slots[ReviewerSlot.A],
             now=now,
+            snapshot=snapshot.content,
         )
         self._transition(session_id, ReviewState.BASELINE_RECORDED)
 
         if path == FixturePath.A_ONLY:
-            self._transition(session_id, ReviewState.REVIEWER_ADJUDICATION)
-            self._transition(session_id, ReviewState.AUTO_RESOLVED)
-            self._transition(session_id, ReviewState.RESULT_RETURNED)
-            return ReviewState.RESULT_RETURNED
+            return self._finish(session_id, path, snapshot)
 
         self._transition(session_id, ReviewState.REVIEWER_B)
         b = self._invoke(
@@ -92,14 +98,12 @@ class ReviewOrchestrator:
             round_number=1,
             assignment=revision.slots[ReviewerSlot.B],
             now=now,
+            snapshot=snapshot.content,
         )
         self._transition(session_id, ReviewState.COMPARING)
 
         if path == FixturePath.AB_AGREEMENT:
-            self._transition(session_id, ReviewState.REVIEWER_ADJUDICATION)
-            self._transition(session_id, ReviewState.AUTO_RESOLVED)
-            self._transition(session_id, ReviewState.RESULT_RETURNED)
-            return ReviewState.RESULT_RETURNED
+            return self._finish(session_id, path, snapshot)
 
         self._transition(session_id, ReviewState.CROSS_REVIEW)
         cross_a = self._invoke(
@@ -111,6 +115,15 @@ class ReviewOrchestrator:
             assignment=revision.slots[ReviewerSlot.A],
             now=now,
             prior_claims=b.claims,
+            snapshot=snapshot.content,
+            peer_assessments=(
+                PeerAssessment(
+                    slot=ReviewerSlot.B,
+                    stage=ReviewStage.INDEPENDENT,
+                    round=1,
+                    assessment=b,
+                ),
+            ),
         )
         cross_b = self._invoke(
             session_id=session_id,
@@ -121,13 +134,19 @@ class ReviewOrchestrator:
             assignment=revision.slots[ReviewerSlot.B],
             now=now,
             prior_claims=a.claims,
+            snapshot=snapshot.content,
+            peer_assessments=(
+                PeerAssessment(
+                    slot=ReviewerSlot.A,
+                    stage=ReviewStage.INDEPENDENT,
+                    round=1,
+                    assessment=a,
+                ),
+            ),
         )
 
         if path == FixturePath.CROSS_REVIEW_RESOLVED:
-            self._transition(session_id, ReviewState.REVIEWER_ADJUDICATION)
-            self._transition(session_id, ReviewState.CALLER_DECISION_REQUIRED)
-            self._transition(session_id, ReviewState.RESULT_RETURNED)
-            return ReviewState.RESULT_RETURNED
+            return self._finish(session_id, path, snapshot)
 
         self._transition(session_id, ReviewState.REVIEWER_C_INDEPENDENT)
         c = self._invoke(
@@ -138,6 +157,7 @@ class ReviewOrchestrator:
             round_number=1,
             assignment=revision.slots[ReviewerSlot.C],
             now=now,
+            snapshot=snapshot.content,
         )
         self._transition(session_id, ReviewState.REVIEWER_C_JUDGING)
         self._invoke(
@@ -149,11 +169,29 @@ class ReviewOrchestrator:
             assignment=revision.slots[ReviewerSlot.C],
             now=now,
             prior_claims=c.claims + cross_a.claims + cross_b.claims,
+            snapshot=snapshot.content,
+            peer_assessments=(
+                PeerAssessment(
+                    slot=ReviewerSlot.C,
+                    stage=ReviewStage.INDEPENDENT,
+                    round=1,
+                    assessment=c,
+                ),
+                PeerAssessment(
+                    slot=ReviewerSlot.A,
+                    stage=ReviewStage.CROSS_REVIEW,
+                    round=2,
+                    assessment=cross_a,
+                ),
+                PeerAssessment(
+                    slot=ReviewerSlot.B,
+                    stage=ReviewStage.CROSS_REVIEW,
+                    round=2,
+                    assessment=cross_b,
+                ),
+            ),
         )
-        self._transition(session_id, ReviewState.REVIEWER_ADJUDICATION)
-        self._transition(session_id, ReviewState.CALLER_DECISION_REQUIRED)
-        self._transition(session_id, ReviewState.RESULT_RETURNED)
-        return ReviewState.RESULT_RETURNED
+        return self._finish(session_id, path, snapshot)
 
     def _invoke(
         self,
@@ -165,8 +203,12 @@ class ReviewOrchestrator:
         round_number: int,
         assignment: SlotSchedule,
         now: datetime,
+        snapshot: dict[str, Any],
         prior_claims: tuple[str, ...] = (),
+        peer_assessments: tuple[PeerAssessment, ...] = (),
     ) -> Assessment:
+        provider = assignment.provider or "fixture"
+        model = assignment.model or "deterministic"
         invocation = self._repository.record_invocation(
             session_id=session_id,
             slot=slot,
@@ -176,8 +218,8 @@ class ReviewOrchestrator:
             snapshot_hash=snapshot_hash,
             prompt_version=assignment.prompt_version,
             schema_version=assignment.schema_version,
-            provider=assignment.provider or "fixture",
-            model=assignment.model or "deterministic",
+            provider=provider,
+            model=model,
         )
         call = ReviewCall(
             session_id=session_id,
@@ -185,9 +227,15 @@ class ReviewOrchestrator:
             slot=slot,
             stage=stage,
             round=round_number,
+            reviewer_type=assignment.reviewer_type,
+            provider=provider,
+            model=model,
+            role_version=assignment.role_version,
             prompt_version=assignment.prompt_version,
             schema_version=assignment.schema_version,
+            snapshot=snapshot,
             prior_claims=prior_claims,
+            peer_assessments=peer_assessments,
             requested_at=now,
         )
         try:
@@ -211,6 +259,36 @@ class ReviewOrchestrator:
             completed_at=now,
         )
         return assessment
+
+    def _finish(
+        self,
+        session_id: str,
+        path: FixturePath,
+        snapshot: RequestSnapshotRecord,
+    ) -> ReviewState:
+        self._transition(session_id, ReviewState.REVIEWER_ADJUDICATION)
+        session = self._repository.get_session(session_id)
+        if session is None:
+            raise LookupError(f"unknown review session {session_id!r}")
+        document = build_review_result(
+            session=session,
+            snapshot=snapshot,
+            invocations=self._repository.list_invocations(session_id),
+            path=path.value,
+        )
+        resolution_state = (
+            ReviewState.AUTO_RESOLVED
+            if document["status"] == "auto_resolved"
+            else ReviewState.CALLER_DECISION_REQUIRED
+        )
+        self._transition(session_id, resolution_state)
+        self._repository.record_result(
+            session_id=session_id,
+            path=path.value,
+            document=document,
+        )
+        self._transition(session_id, ReviewState.RESULT_RETURNED)
+        return ReviewState.RESULT_RETURNED
 
     def _transition(self, session_id: str, target: ReviewState) -> None:
         self._repository.transition_session(session_id, target)

@@ -58,6 +58,25 @@ def validate_review_request(
     _validate_classification(document, "review request")
 
 
+def validate_review_result(
+    document: dict[str, Any],
+    request: dict[str, Any],
+    root: Path | None = None,
+) -> None:
+    root = root or contracts_root()
+    schema = _load(root / "schemas" / "review-result.v1.schema.json")
+    Draft7Validator.check_schema(schema)
+    validator = Draft7Validator(schema, format_checker=FormatChecker())
+    errors = sorted(validator.iter_errors(document), key=lambda item: list(item.path))
+    if errors:
+        messages = []
+        for error in errors:
+            location = ".".join(str(part) for part in error.path) or "$"
+            messages.append(f"{location}: {error.message}")
+        raise ContractValidationError("\n".join(messages))
+    _validate_request_result_pair(request, document, "review result")
+
+
 def _leaf_paths(value: Any, path: str) -> list[str]:
     if isinstance(value, dict):
         return [

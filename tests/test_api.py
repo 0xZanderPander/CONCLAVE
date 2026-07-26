@@ -48,6 +48,17 @@ async def test_local_api_accepts_and_runs_a_fixture_review() -> None:
             )
             assert completed.status_code == 200
             assert completed.json()["state"] == "result_returned"
+
+            result = await client.get(f"/reviews/{payload['review_session_id']}/result")
+            audit = await client.get(f"/reviews/{payload['review_session_id']}/audit")
+            operations = await client.get("/operations/status")
+            assert result.status_code == 200
+            assert result.json()["status"] == "auto_resolved"
+            assert audit.status_code == 200
+            assert audit.json()["invocation_count"] == 1
+            assert operations.status_code == 200
+            assert operations.json()["queue"]["expired_leases"] == 0
+            assert operations.json()["stale_process_ids"] == []
     finally:
         engine.dispose()
 

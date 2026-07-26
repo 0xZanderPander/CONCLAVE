@@ -2,9 +2,14 @@
 
 ## Status
 
-Proposed implementation roadmap for an independent Conclave MVP. Conclave is
-built and tested with sample ad-performance data and fixtures. Marketing OS is
-built separately and does not depend on Conclave.
+Active implementation roadmap for the independent Conclave MVP. Phases 1A and
+1B are complete. Phase 2 sample task-pack intake and automatic comparator
+routing are next.
+
+The Phase 1B harness deliberately selects each known panel path for testing. It
+does not yet choose a path from reviewer distance or hard triggers.
+
+Marketing OS is built separately and does not depend on Conclave.
 
 Progress is controlled by acceptance gates rather than dates.
 
@@ -91,7 +96,7 @@ Marketing outcome store, or Marketing Learning Registry.
   raw personal content.
 - Tracking-unhealthy input cannot be represented as optimization-eligible.
 
-## Phase 1: Foundation and Review Ledger
+## Phase 1A: Foundation and Review Ledger — Complete
 
 ### Build
 
@@ -119,7 +124,42 @@ Marketing outcome store, or Marketing Learning Registry.
 - A fixture moves through every normal and failure state.
 - Every transition is reconstructable from the ledger.
 
-## Phase 2: Sample Ad-Performance Task-Pack Intake
+## Phase 1B: Durable Fixture Execution and Operations — Complete
+
+### Built
+
+- immutable `review-result/v1` records tied to the request snapshot
+- deterministic A-only, A/B agreement, bounded cross-review, and two-stage
+  reviewer-C fixture execution
+- exact decision-ledger verification for legal transitions, expected path,
+  invocation count, shared snapshot, result hash, and result contract
+- PostgreSQL work claiming with row locks and `SKIP LOCKED`
+- configurable leases, retry delay, maximum attempts, and database pool limits
+- dead-letter handling, manual retry, cancellation, and queue status
+- persistent scheduler and worker commands with graceful stop
+- runtime process start, heartbeat, stop, and stale-process reporting
+- common provider registry behind the reviewer interface
+- retries for provider errors and malformed structured output
+- no silent provider substitution
+- local fixture API and operational endpoints
+- migration `20260726_0006` applied to the dedicated Conclave Supabase project
+- live PostgreSQL tests for all four fixture paths and concurrent work claiming
+
+### Exit Gate
+
+- Every fixture path produces one contract-valid, immutable result.
+- Every completed result has a verified decision ledger.
+- A and B first-round calls are blind and use one immutable snapshot.
+- C assesses the snapshot independently before judging A and B.
+- Two simultaneous workers cannot claim the same work item.
+- Recoverable work can retry; exhausted or permanent work is dead-lettered.
+- An operator can inspect queue/process health, retry dead-letter work, and
+  cancel unfinished work.
+- Supabase tests leave no synthetic review rows behind.
+- Supabase security checks show only expected informational notices for private
+  RLS tables with no client policies.
+
+## Phase 2: Sample Ad-Performance Task-Pack Intake — Next
 
 ### Build
 
@@ -133,6 +173,8 @@ Marketing outcome store, or Marketing Learning Registry.
 - local `marketing-ads/v1` sample action ontology and comparator profile
 - weighted distance, hard-trigger, and merge-rule validation
 - stored fixtures for deterministic tests
+- automatic route selection from materiality, weighted A/B distance, hard
+  triggers, and failed-goal input
 
 ### Exit Gate
 
@@ -295,33 +337,37 @@ Marketing outcome store, or Marketing Learning Registry.
 
 ## MVP Acceptance Checklist
 
-- [ ] Conclave validates its local versioned contract fixtures.
-- [ ] Review-plan cadence values are editable through audited future revisions.
-- [ ] Open sessions remain pinned to their original plan revision.
-- [ ] Duplicate requests cannot create duplicate reviews.
-- [ ] A fixture package names one validated, deduplicated plan occurrence.
-- [ ] Every review uses a stored, hashed request snapshot.
-- [ ] Evidence, context, policy, goal, and quality are distinct.
-- [ ] Evidence quality is separate from reviewer confidence.
-- [ ] Reviewer A and B assessments are independently formed.
-- [ ] Whenever B or C joins, all reviewers use the exact same snapshot.
+- [x] Conclave validates its local versioned contract fixtures.
+- [x] Review-plan cadence values are editable through audited future revisions.
+- [x] Open sessions remain pinned to their original plan revision.
+- [x] Duplicate requests cannot create duplicate reviews.
+- [x] A fixture package names one validated, deduplicated plan occurrence.
+- [x] Every review uses a stored, hashed request snapshot.
+- [x] Evidence, context, policy, goal, and quality are distinct in the request
+      contract.
+- [x] Evidence quality is separate from reviewer confidence.
+- [x] Reviewer A and B fixture assessments are independently formed.
+- [x] Whenever B or C joins, all reviewers use the exact same snapshot.
 - [ ] B joins only on its cadence or an approved expansion trigger.
-- [ ] Triggered B work does not move its next scheduled audit.
-- [ ] Reviewer A's baseline is recorded.
+- [x] Triggered B schedule calculation does not move its next scheduled audit.
+- [x] Reviewer A's baseline is recorded.
 - [ ] Claims reference evidence and alternative explanations.
 - [ ] Disagreement is measured and explained.
-- [ ] Ad-performance weights total `1.0`, tolerance is explicit, and hard triggers
-      bypass weighted agreement.
-- [ ] Cross review is one bounded round.
-- [ ] Reviewer C appears only after surviving disagreement, assesses blindly,
-      then judges A and B.
+- [x] Ad-performance fixture weights total `1.0`, tolerance is explicit, and
+      hard triggers bypass weighted agreement.
+- [x] Cross-review fixture execution is one bounded round.
+- [x] Reviewer C fixture execution assesses blindly before judging A and B.
+- [ ] Runtime routing invokes C only after measured disagreement survives cross
+      review.
 - [ ] Material results return `caller_decision_required`.
-- [ ] Conclave has no platform credential or execution path.
-- [ ] Conclave has no authoritative Marketing approval surface.
+- [x] Conclave has no platform credential or execution path.
+- [x] Conclave has no authoritative Marketing approval surface.
 - [ ] Feedback is linked without becoming trusted domain truth.
 - [ ] Panel-value metrics are labeled directional rather than causal proof.
 - [ ] Provider, prompt, schema, token, latency, and cost data are auditable.
-- [ ] Failures retry without duplicating completed work.
+- [x] Queue failures retry without duplicating completed work.
+- [x] Completed fixture results and their decision ledgers validate on
+      PostgreSQL.
 
 ## Explicitly Deferred
 
@@ -355,45 +401,14 @@ Its scope is limited to optional ad-performance review:
 - Conclave receives no Meta credential and performs no platform action.
 - The draft future contracts must be reviewed again before any live connection.
 
-## Coding Start Gate
+## Immediate Next Build: Phase 2 Intake
 
-Phase 1 may begin when:
-
-- r4 design documents and changelog are synchronized;
-- the local draft contract package is internally valid at `0.2.0`;
-- ad-performance weights and hard triggers have golden test vectors;
-- one review-plan revision fixture proves editable cadence semantics;
-- one fake state-trace suite covers A-only, A/B, cross-review, C, result, and
-  feedback paths without any Marketing production access.
-
-## Immediate Next Build: Phase 1A
-
-Start with the deterministic kernel and ledger. Do not add a real model provider
-or Marketing connection in this slice.
-
-### Build order
-
-1. Initialize source control and the Python project skeleton.
-2. Add Pydantic models for plan revisions, sessions, invocations, snapshots,
-   assessments, comparisons, results, feedback references, and audit events.
-3. Load and validate the draft `0.2.0` shared schemas and fixtures in tests.
-4. Add the first PostgreSQL migration with uniqueness and immutability
-   constraints for plan revisions, occurrences, sessions, invocations, and
-   snapshot hashes.
-5. Implement pure schedule expansion for A/B cadences, future-effective plan
-   revisions, collisions, and off-cadence B triggers.
-6. Implement the fixed state-transition table with fake reviewer adapters.
-7. Replay `design-fixtures/review-plan-revision.json` and
-   `design-fixtures/fake-state-traces.json` as deterministic tests.
-8. Add structured audit events for every accepted transition and rejected
-   duplicate.
-
-### Phase 1A done
-
-- all contract and design fixtures pass in the project test suite;
-- a repeated occurrence cannot create a second session;
-- an open session cannot change plan revision;
-- the fake runtime traverses A-only, A/B, cross-review, and C paths;
-- every state transition is reconstructable from the ledger; and
-- the code contains no provider credential, Marketing connection, policy
-  decision, or execution path.
+1. Add a registered sample task-pack object for ontology, eligibility,
+   materiality, and comparator rules.
+2. Validate freshness, partial data, tracking health, evidence quality, and
+   permitted recommendations before review.
+3. Compare structured A/B output with the approved weights and hard triggers.
+4. Select A-only, A/B agreement, cross-review, or C from recorded evidence
+   rather than a fixture path argument.
+5. Add golden end-to-end tests for each automatic route.
+6. Review the Phase 2 exit gate before choosing any real model provider.

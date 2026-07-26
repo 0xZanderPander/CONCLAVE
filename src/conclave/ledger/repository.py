@@ -1,5 +1,6 @@
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -18,7 +19,9 @@ from conclave.ledger.models import (
     ReviewOccurrenceRecord,
     ReviewPlanRecord,
     ReviewPlanRevisionRecord,
+    ReviewResultRecord,
     ReviewSessionRecord,
+    RuntimeProcessRecord,
     SchedulerWorkItemRecord,
 )
 from conclave.orchestration.state_machine import validate_transition
@@ -31,6 +34,13 @@ class LedgerConflictError(RuntimeError):
 
 class WorkItemClaimError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class QueueMetrics:
+    counts: dict[str, int]
+    oldest_claimable_at: datetime | None
+    expired_leases: int
 
 
 def canonical_hash(value: dict[str, Any]) -> str:
@@ -172,7 +182,10 @@ class LedgerRepository:
         *,
         occurrence_id: str,
         due_at: datetime,
+        max_attempts: int = 3,
     ) -> SchedulerWorkItemRecord:
+        if max_attempts <= 0:
+            raise ValueError("max_attempts must be positive")
         work_item_id = deterministic_id("work", occurrence_id)
         with self._sessions.begin() as db:
             existing = db.get(SchedulerWorkItemRecord, work_item_id)
@@ -188,7 +201,9 @@ class LedgerRepository:
                 work_item_id=work_item_id,
                 occurrence_id=occurrence_id,
                 due_at=due_at,
+                available_at=due_at,
                 status="pending",
+                max_attempts=max_attempts,
             )
             db.add(record)
             self._append_event(
@@ -215,7 +230,10 @@ class LedgerRepository:
                 select(SchedulerWorkItemRecord)
                 .where(
                     or_(
-                        SchedulerWorkItemRecord.status == "pending",
+                        (
+                            SchedulerWorkItemRecord.status.in_(("pending", "retry"))
+                            & (SchedulerWorkItemRecord.available_at <= now)
+                        ),
                         (
                             (SchedulerWorkItemRecord.status == "claimed")
                             & (SchedulerWorkItemRecord.lease_expires_at <= now)
@@ -258,7 +276,11 @@ class LedgerRepository:
         now: datetime,
     ) -> SchedulerWorkItemRecord:
         with self._sessions.begin() as db:
-            record = db.get(SchedulerWorkItemRecord, work_item_id)
+            record = db.scalar(
+                select(SchedulerWorkItemRecord)
+                .where(SchedulerWorkItemRecord.work_item_id == work_item_id)
+                .with_for_update()
+            )
             if record is None:
                 raise LookupError(f"unknown scheduler work item {work_item_id!r}")
             if record.status != "claimed" or record.claimed_by != worker_id:
@@ -287,26 +309,178 @@ class LedgerRepository:
         worker_id: str,
         now: datetime,
         error: str,
+        retryable: bool = True,
+        retry_delay_seconds: int = 30,
     ) -> SchedulerWorkItemRecord:
+        if retry_delay_seconds < 0:
+            raise ValueError("retry_delay_seconds cannot be negative")
         with self._sessions.begin() as db:
-            record = db.get(SchedulerWorkItemRecord, work_item_id)
+            record = db.scalar(
+                select(SchedulerWorkItemRecord)
+                .where(SchedulerWorkItemRecord.work_item_id == work_item_id)
+                .with_for_update()
+            )
             if record is None:
                 raise LookupError(f"unknown scheduler work item {work_item_id!r}")
             if record.status != "claimed" or record.claimed_by != worker_id:
                 raise WorkItemClaimError("only the active lease holder may fail work")
-            record.status = "failed"
-            record.completed_at = now
+            dead_lettered = not retryable or record.attempts >= record.max_attempts
+            record.status = "dead_letter" if dead_lettered else "retry"
+            record.completed_at = now if dead_lettered else None
+            record.dead_lettered_at = now if dead_lettered else None
+            record.available_at = now + timedelta(seconds=retry_delay_seconds)
             record.lease_expires_at = None
             record.last_error = error[:1000]
+            record.claimed_by = None
+            record.claimed_at = None
             self._append_event(
                 db,
                 entity_type="scheduler_work_item",
                 entity_id=work_item_id,
-                event_type="work_item_failed",
-                payload={"worker_id": worker_id, "error": record.last_error},
+                event_type=(
+                    "work_item_dead_lettered" if dead_lettered else "work_item_retry_scheduled"
+                ),
+                payload={
+                    "worker_id": worker_id,
+                    "error": record.last_error,
+                    "attempt": record.attempts,
+                    "max_attempts": record.max_attempts,
+                    "available_at": (None if dead_lettered else record.available_at.isoformat()),
+                },
             )
             db.flush()
             return record
+
+    def extend_work_item_lease(
+        self,
+        *,
+        work_item_id: str,
+        worker_id: str,
+        now: datetime,
+        lease_seconds: int,
+    ) -> SchedulerWorkItemRecord:
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds must be positive")
+        with self._sessions.begin() as db:
+            record = db.scalar(
+                select(SchedulerWorkItemRecord)
+                .where(SchedulerWorkItemRecord.work_item_id == work_item_id)
+                .with_for_update()
+            )
+            if record is None:
+                raise LookupError(f"unknown scheduler work item {work_item_id!r}")
+            if record.status != "claimed" or record.claimed_by != worker_id:
+                raise WorkItemClaimError("only the active lease holder may extend work")
+            record.lease_expires_at = now + timedelta(seconds=lease_seconds)
+            self._append_event(
+                db,
+                entity_type="scheduler_work_item",
+                entity_id=work_item_id,
+                event_type="work_item_lease_extended",
+                payload={
+                    "worker_id": worker_id,
+                    "lease_expires_at": record.lease_expires_at.isoformat(),
+                },
+            )
+            db.flush()
+            return record
+
+    def retry_dead_letter(
+        self,
+        *,
+        work_item_id: str,
+        now: datetime,
+        additional_attempts: int = 1,
+    ) -> SchedulerWorkItemRecord:
+        if additional_attempts <= 0:
+            raise ValueError("additional_attempts must be positive")
+        with self._sessions.begin() as db:
+            record = db.scalar(
+                select(SchedulerWorkItemRecord)
+                .where(SchedulerWorkItemRecord.work_item_id == work_item_id)
+                .with_for_update()
+            )
+            if record is None:
+                raise LookupError(f"unknown scheduler work item {work_item_id!r}")
+            if record.status != "dead_letter":
+                raise WorkItemClaimError("only dead-letter work may be retried manually")
+            record.status = "retry"
+            record.max_attempts += additional_attempts
+            record.available_at = now
+            record.completed_at = None
+            record.dead_lettered_at = None
+            self._append_event(
+                db,
+                entity_type="scheduler_work_item",
+                entity_id=work_item_id,
+                event_type="work_item_manual_retry",
+                payload={
+                    "additional_attempts": additional_attempts,
+                    "max_attempts": record.max_attempts,
+                },
+            )
+            db.flush()
+            return record
+
+    def cancel_work_item(
+        self,
+        *,
+        work_item_id: str,
+        now: datetime,
+        reason: str,
+    ) -> SchedulerWorkItemRecord:
+        with self._sessions.begin() as db:
+            record = db.scalar(
+                select(SchedulerWorkItemRecord)
+                .where(SchedulerWorkItemRecord.work_item_id == work_item_id)
+                .with_for_update()
+            )
+            if record is None:
+                raise LookupError(f"unknown scheduler work item {work_item_id!r}")
+            if record.status in {"completed", "cancelled"}:
+                raise WorkItemClaimError(f"cannot cancel work in state {record.status!r}")
+            record.status = "cancelled"
+            record.completed_at = now
+            record.lease_expires_at = None
+            record.claimed_by = None
+            record.claimed_at = None
+            record.last_error = reason[:1000]
+            self._append_event(
+                db,
+                entity_type="scheduler_work_item",
+                entity_id=work_item_id,
+                event_type="work_item_cancelled",
+                payload={"reason": record.last_error},
+            )
+            db.flush()
+            return record
+
+    def queue_metrics(self, now: datetime) -> QueueMetrics:
+        with self._sessions() as db:
+            rows = db.execute(
+                select(
+                    SchedulerWorkItemRecord.status,
+                    func.count(SchedulerWorkItemRecord.work_item_id),
+                ).group_by(SchedulerWorkItemRecord.status)
+            )
+            counts = {status: count for status, count in rows}
+            oldest = db.scalar(
+                select(func.min(SchedulerWorkItemRecord.available_at)).where(
+                    SchedulerWorkItemRecord.status.in_(("pending", "retry")),
+                    SchedulerWorkItemRecord.available_at <= now,
+                )
+            )
+            expired = db.scalar(
+                select(func.count(SchedulerWorkItemRecord.work_item_id)).where(
+                    SchedulerWorkItemRecord.status == "claimed",
+                    SchedulerWorkItemRecord.lease_expires_at <= now,
+                )
+            )
+            return QueueMetrics(
+                counts=counts,
+                oldest_claimable_at=oldest,
+                expired_leases=expired or 0,
+            )
 
     def list_plan_revisions(self) -> list[ReviewPlanRevision]:
         with self._sessions() as db:
@@ -486,7 +660,11 @@ class LedgerRepository:
         completed_at: datetime,
     ) -> ReviewerInvocationRecord:
         with self._sessions.begin() as db:
-            record = db.get(ReviewerInvocationRecord, invocation_id)
+            record = db.scalar(
+                select(ReviewerInvocationRecord)
+                .where(ReviewerInvocationRecord.invocation_id == invocation_id)
+                .with_for_update()
+            )
             if record is None:
                 raise LookupError(f"unknown reviewer invocation {invocation_id!r}")
             if record.status == "completed":
@@ -516,7 +694,11 @@ class LedgerRepository:
         completed_at: datetime,
     ) -> ReviewerInvocationRecord:
         with self._sessions.begin() as db:
-            record = db.get(ReviewerInvocationRecord, invocation_id)
+            record = db.scalar(
+                select(ReviewerInvocationRecord)
+                .where(ReviewerInvocationRecord.invocation_id == invocation_id)
+                .with_for_update()
+            )
             if record is None:
                 raise LookupError(f"unknown reviewer invocation {invocation_id!r}")
             if record.status != "pending":
@@ -540,7 +722,11 @@ class LedgerRepository:
         target: ReviewState,
     ) -> ReviewSessionRecord:
         with self._sessions.begin() as db:
-            record = db.get(ReviewSessionRecord, session_id)
+            record = db.scalar(
+                select(ReviewSessionRecord)
+                .where(ReviewSessionRecord.session_id == session_id)
+                .with_for_update()
+            )
             if record is None:
                 raise LookupError(f"unknown review session {session_id!r}")
             source = ReviewState(record.current_state)
@@ -564,6 +750,190 @@ class LedgerRepository:
         with self._sessions() as db:
             return db.scalar(
                 select(RequestSnapshotRecord).where(RequestSnapshotRecord.session_id == session_id)
+            )
+
+    def list_invocations(self, session_id: str) -> list[ReviewerInvocationRecord]:
+        with self._sessions() as db:
+            return list(
+                db.scalars(
+                    select(ReviewerInvocationRecord)
+                    .where(ReviewerInvocationRecord.session_id == session_id)
+                    .order_by(
+                        ReviewerInvocationRecord.created_at,
+                        ReviewerInvocationRecord.invocation_id,
+                    )
+                )
+            )
+
+    def record_result(
+        self,
+        *,
+        session_id: str,
+        path: str,
+        document: dict[str, Any],
+    ) -> ReviewResultRecord:
+        result_hash = canonical_hash(document)
+        result_id = deterministic_id("result", session_id)
+        with self._sessions.begin() as db:
+            existing = db.scalar(
+                select(ReviewResultRecord).where(ReviewResultRecord.session_id == session_id)
+            )
+            if existing is not None:
+                if existing.result_hash != result_hash or existing.path != path:
+                    raise LedgerConflictError("review result is immutable")
+                return existing
+            record = ReviewResultRecord(
+                result_id=result_id,
+                session_id=session_id,
+                path=path,
+                status=document["status"],
+                contract_version=document["contract_version"],
+                result_hash=result_hash,
+                document=document,
+            )
+            db.add(record)
+            self._append_event(
+                db,
+                entity_type="review_session",
+                entity_id=session_id,
+                event_type="result_recorded",
+                payload={
+                    "result_id": result_id,
+                    "result_hash": result_hash,
+                    "status": document["status"],
+                    "path": path,
+                },
+            )
+            db.flush()
+            return record
+
+    def get_result(self, session_id: str) -> ReviewResultRecord | None:
+        with self._sessions() as db:
+            return db.scalar(
+                select(ReviewResultRecord).where(ReviewResultRecord.session_id == session_id)
+            )
+
+    def register_process(
+        self,
+        *,
+        process_id: str,
+        process_type: str,
+        now: datetime,
+        metadata: dict[str, Any] | None = None,
+    ) -> RuntimeProcessRecord:
+        with self._sessions.begin() as db:
+            record = db.scalar(
+                select(RuntimeProcessRecord)
+                .where(RuntimeProcessRecord.process_id == process_id)
+                .with_for_update()
+            )
+            if record is None:
+                record = RuntimeProcessRecord(
+                    process_id=process_id,
+                    process_type=process_type,
+                    status="running",
+                    started_at=now,
+                    heartbeat_at=now,
+                    process_metadata=metadata or {},
+                )
+                db.add(record)
+            else:
+                record.process_type = process_type
+                record.status = "running"
+                record.started_at = now
+                record.heartbeat_at = now
+                record.stopped_at = None
+                record.process_metadata = metadata or {}
+            self._append_event(
+                db,
+                entity_type="runtime_process",
+                entity_id=process_id,
+                event_type="process_started",
+                payload={"process_type": process_type},
+            )
+            db.flush()
+            return record
+
+    def heartbeat_process(
+        self,
+        *,
+        process_id: str,
+        now: datetime,
+        metadata: dict[str, Any] | None = None,
+    ) -> RuntimeProcessRecord:
+        with self._sessions.begin() as db:
+            record = db.scalar(
+                select(RuntimeProcessRecord)
+                .where(RuntimeProcessRecord.process_id == process_id)
+                .with_for_update()
+            )
+            if record is None:
+                raise LookupError(f"unknown runtime process {process_id!r}")
+            if record.status != "running":
+                raise RuntimeError(f"cannot heartbeat process in state {record.status!r}")
+            record.heartbeat_at = now
+            if metadata is not None:
+                record.process_metadata = metadata
+            db.flush()
+            return record
+
+    def stop_process(
+        self,
+        *,
+        process_id: str,
+        now: datetime,
+    ) -> RuntimeProcessRecord:
+        with self._sessions.begin() as db:
+            record = db.scalar(
+                select(RuntimeProcessRecord)
+                .where(RuntimeProcessRecord.process_id == process_id)
+                .with_for_update()
+            )
+            if record is None:
+                raise LookupError(f"unknown runtime process {process_id!r}")
+            record.status = "stopped"
+            record.heartbeat_at = now
+            record.stopped_at = now
+            self._append_event(
+                db,
+                entity_type="runtime_process",
+                entity_id=process_id,
+                event_type="process_stopped",
+                payload={"process_type": record.process_type},
+            )
+            db.flush()
+            return record
+
+    def list_processes(self) -> list[RuntimeProcessRecord]:
+        with self._sessions() as db:
+            return list(
+                db.scalars(
+                    select(RuntimeProcessRecord).order_by(
+                        RuntimeProcessRecord.process_type,
+                        RuntimeProcessRecord.process_id,
+                    )
+                )
+            )
+
+    def stale_processes(
+        self,
+        *,
+        now: datetime,
+        stale_after_seconds: int,
+    ) -> list[RuntimeProcessRecord]:
+        if stale_after_seconds <= 0:
+            raise ValueError("stale_after_seconds must be positive")
+        threshold = now - timedelta(seconds=stale_after_seconds)
+        with self._sessions() as db:
+            return list(
+                db.scalars(
+                    select(RuntimeProcessRecord)
+                    .where(
+                        RuntimeProcessRecord.status == "running",
+                        RuntimeProcessRecord.heartbeat_at < threshold,
+                    )
+                    .order_by(RuntimeProcessRecord.heartbeat_at, RuntimeProcessRecord.process_id)
+                )
             )
 
     def audit_events(self, entity_type: str, entity_id: str) -> list[AuditEventRecord]:

@@ -2,9 +2,16 @@
 
 ## Status
 
-Proposed architecture for an independent Conclave MVP. It is built and tested
-with sample data and fixtures. Marketing OS is built separately and has no
-Conclave dependency.
+Active architecture for the independent Conclave MVP. Foundation phases 1A and
+1B are implemented and verified with local fixtures and the dedicated Conclave
+Supabase project. Phase 2 task-pack intake and automatic comparator routing are
+next.
+
+The current fixture harness selects a known path so every transition can be
+tested. It does not yet infer the path from A/B distance. Sections describing
+automatic weighted comparison are the Phase 2 target.
+
+Marketing OS is built separately and has no Conclave dependency.
 
 ## Architecture Decision
 
@@ -14,12 +21,13 @@ Build Conclave as a modular monolith:
 - one application package
 - one PostgreSQL review ledger
 - one API process
-- one scheduler/worker process from the same package
+- separate persistent scheduler and worker commands from the same package
 - versioned, deployment-editable review plans
 - reviewer A as routine reviewer, B as cadence- and trigger-based auditor, and C
   as a two-stage judge
 - provider adapters behind `ReviewerRuntime`
-- authenticated review-request, result, and feedback APIs
+- a local fixture API now, with authenticated caller and feedback APIs deferred
+  until their acceptance criteria are approved
 
 Conclave has no campaign builder, Meta adapter, account or Page discovery,
 first-party event collector, spend approval, Telegram approval adapter,
@@ -73,9 +81,14 @@ flowchart TB
     FutureMarketing["Future optional Marketing OS<br/>ad-performance adapter"] -.-> Request
     PlanAPI["Versioned review-plan API"] --> Plans["Plan revisions<br/>effective_at + audit history"]
     Plans --> Scheduler["Database scheduler<br/>deployment-specific cadences"]
-    Scheduler --> Session["Review Session"]
+    Scheduler --> Queue["Leased PostgreSQL work queue<br/>retry + dead letter"]
+    Queue --> Worker["Persistent worker"]
+    Worker --> Session["Review Session"]
     Request --> Session
     Session <--> Ledger[("PostgreSQL Review Ledger")]
+    Ops["Operational controls<br/>queue + heartbeat + stale process"] -.-> Queue
+    Ops -.-> Worker
+    FixturePath["Phase 1B fixture path selector"] -.-> Expand
 
     Session --> A["Reviewer A<br/>routine assessment"]
     A --> Baseline["A-only baseline"]
@@ -83,7 +96,7 @@ flowchart TB
     A --> Expand{"B due or<br/>triggered?"}
     Expand -->|"No + non-material"| Resolve["Reviewer adjudication"]
     Expand -->|"Yes"| B["Reviewer B<br/>blind first round"]
-    A --> Compare["Task-pack comparator<br/>weights + hard triggers"]
+    A --> Compare["Phase 2 task-pack comparator<br/>weights + hard triggers"]
     B --> Compare
     Compare -->|"Within tolerance"| Resolve
     Compare -->|"Beyond tolerance<br/>or failed goal"| Cross["One bounded cross review"]
@@ -94,6 +107,7 @@ flowchart TB
 
     Resolve --> Result["Structured review result"]
     Result --> Ledger
+    Ledger --> Audit["Decision-ledger verifier"]
     Result --> TestSink["Test result sink"]
     TestSink --> Feedback["Simulated decision / outcome feedback"]
     Result -.-> FutureMarketing
@@ -270,7 +284,8 @@ completed work.
 
 ### API
 
-- accept authenticated, idempotent review requests
+- accept local idempotent fixture requests now
+- require authenticated caller identities before any non-local deployment
 - expose review status and complete review records
 - deliver or expose structured results
 - accept opaque caller feedback
@@ -281,6 +296,10 @@ completed work.
 - identify reviewer A and B work due under the approved plan
 - apply plan revisions at their `effective_at` boundaries
 - create idempotent sessions and reviewer invocations
+- claim due work with a PostgreSQL lease and `SKIP LOCKED`
+- retry recoverable failures and dead-letter permanent or exhausted work
+- support operator retry and cancellation
+- record process start, heartbeat, stop, and stale-process status
 - validate request eligibility
 - execute reviewer A and record its baseline
 - expand to blind reviewer B on cadence or configured triggers
@@ -296,31 +315,28 @@ completed work.
 ## Application Modules
 
 ```text
-conclave/
-├── app/
-│   ├── api/                    # requests, results, feedback, health
-│   ├── config/                 # environment configuration
-│   ├── plans/                  # versioned review plans and effective revisions
-│   ├── contracts/              # request/result/feedback protocols
-│   ├── task_packs/             # registered domain schemas and comparator profiles
-│   ├── orchestration/          # fixed review state machine
-│   ├── scheduling/             # cadences and database locking
-│   ├── ledger/                 # persistence and audit events
-│   ├── reviewers/              # ReviewerRuntime and provider adapters
-│   ├── panel/                  # comparison, cross review, tie-break
-│   ├── delivery/               # result delivery and deduplication
-│   ├── feedback/               # external references and evaluation
-│   └── shared/
+.
+├── src/conclave/
+│   ├── api/                    # local fixture API, results, audit, operations
+│   ├── auditing/               # decision-ledger verification
+│   ├── contracts/              # request/result/feedback schema validation
+│   ├── ledger/                 # PostgreSQL records, queue, audit events
+│   ├── orchestration/          # fixed state machine and result construction
+│   ├── plans/                  # versioned plans and schedule calculation
+│   ├── reviewers/              # common runtime and provider registry
+│   ├── runtime/                # persistent scheduler and worker loops
+│   ├── scheduling/             # occurrence expansion and leased work
+│   ├── config.py
+│   └── database.py
 ├── migrations/
 ├── tests/
-│   ├── fixtures/
-│   ├── contract/
-│   ├── integration/
-│   └── end_to_end/
+├── design-fixtures/
+├── hyperstructure-review-contracts/
 └── pyproject.toml
 ```
 
-These are modules, not separately deployed services.
+These are modules, not microservices. Later task-pack, comparison, feedback,
+and delivery modules should be added only when their phases begin.
 
 ## Component Responsibilities
 
@@ -345,9 +361,10 @@ review(snapshot, role, round, prior_claims, prompt_version, schema_version)
     -> assessment
 ```
 
-Every call records provider, model or reviewer type, slot, role, round, prompt
-and schema versions, snapshot ID, timestamps, terminal status, tokens, latency,
-and cost. There is no silent provider fallback.
+The current runtime records provider, model or reviewer type, slot, stage,
+round, prompt and schema versions, snapshot hash, and terminal status. Token,
+latency, cost, and provider-specific timeout accounting are required before a
+real model provider is approved. There is no silent provider fallback.
 
 Reviewer C uses two invocations. The first has no A/B content. The second
 receives C's stored assessment plus A/B final claims and returns one verdict:
@@ -416,27 +433,29 @@ issue catches, cross-review resolution rate, reviewer-C rate, caller override
 rate, latency, and cost. These are panel-value indicators, not causal proof that
 the panel outperformed reviewer A.
 
-## Minimal Persistence
+## Persistence
 
-- `subjects`
+Implemented through migration `20260726_0006`:
+
 - `review_plans`
 - `review_plan_revisions`
 - `reviewer_slots`
+- `review_occurrences`
+- `scheduler_work_items`
 - `review_sessions`
 - `reviewer_invocations`
 - `request_snapshots`
-- `assessments`
-- `claims`
-- `claim_evidence_links`
-- `comparisons`
-- `cross_reviews`
-- `baselines`
-- `recommendations`
-- `result_deliveries`
-- `external_decision_refs`
-- `external_outcome_refs`
-- `reviewer_evaluation_candidates`
+- `review_results`
+- `runtime_processes`
 - `audit_events`
+
+Assessments, claims, baselines, disagreement, tie-break metadata, and the final
+recommendation are stored as validated structured documents in invocations and
+results for the MVP. Separate query-oriented tables should be added only when a
+proven access pattern requires them.
+
+Deferred persistence includes external feedback references, reviewer
+evaluation candidates, and result-delivery attempts.
 
 Important constraints:
 
@@ -452,23 +471,29 @@ Important constraints:
 
 ## Minimal API
 
+Implemented local fixture endpoints:
+
 - `POST /reviews` — create an idempotent review
 - `GET /reviews/{review_session_id}` — inspect a review
-- `POST /reviews/{review_session_id}/retry` — retry an allowed step
+- `POST /reviews/{review_session_id}/run` — run a selected fixture path
 - `GET /reviews/{review_session_id}/result` — retrieve the structured result
-- `POST /reviews/{review_session_id}/feedback` — link caller references
-- `POST /review-plans` — create a plan
-- `POST /review-plans/{plan_id}/revisions` — schedule an audited plan change
-- `GET /review-plans/{plan_id}` — inspect the active plan and revision history
-- `POST /review-plans/{plan_id}/pause` — create a paused plan revision
-- `POST /review-plans/{plan_id}/resume` — create a resumed plan revision
+- `GET /reviews/{review_session_id}/audit` — verify the decision ledger
+- `POST /scheduler/tick` — expand fixture schedules
+- `POST /worker/run-once` — process one fixture work item
+- `GET /operations/status` — inspect queue and process health
+- `POST /operations/work-items/{work_item_id}/retry` — recover dead-letter work
+- `POST /operations/work-items/{work_item_id}/cancel` — cancel unfinished work
 - `GET /health`
 - `GET /ready`
+
+The fixture API is local and unauthenticated. It must not be exposed as a
+production service. Authenticated callers, plan-management endpoints, external
+feedback, and result-delivery endpoints are later-phase work.
 
 ## Security and Reliability
 
 - no platform or domain-production credentials
-- authenticated caller identities
+- authenticated caller identities before any non-local deployment
 - caller-declared classification plus Conclave validation
 - redacted snapshots before provider calls
 - secrets outside source control
@@ -521,6 +546,6 @@ Project decisions still required:
 - future caller acceptance of a contract version, only if an integration is
   later approved
 
-These choices do not block Phase 1 ledger and state-machine work. Provider,
+These choices did not block the completed fixture foundation. Provider,
 security, retention, and integration choices must be resolved before their
 corresponding later phase begins.

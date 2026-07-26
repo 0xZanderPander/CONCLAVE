@@ -23,8 +23,14 @@ class ScheduledWork:
 
 
 class SchedulerService:
-    def __init__(self, repository: LedgerRepository) -> None:
+    def __init__(
+        self,
+        repository: LedgerRepository,
+        *,
+        max_attempts: int = 3,
+    ) -> None:
         self._repository = repository
+        self._max_attempts = max_attempts
 
     def tick(self, at: datetime) -> tuple[ScheduledWork, ...]:
         grouped: dict[tuple[str, str], list[ReviewPlanRevision]] = {}
@@ -61,6 +67,7 @@ class SchedulerService:
             work_item = self._repository.enqueue_occurrence(
                 occurrence_id=occurrence.occurrence_id,
                 due_at=trigger.due_at,
+                max_attempts=self._max_attempts,
             )
             scheduled.append(
                 ScheduledWork(

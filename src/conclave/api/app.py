@@ -5,12 +5,18 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Engine, text
 
+from conclave.auditing.verification import AuditVerificationError, AuditVerifier
 from conclave.config import Settings
 from conclave.contracts.validation import ContractValidationError
 from conclave.database import create_database_engine, create_session_factory
 from conclave.fixtures import load_design_plan_revisions
 from conclave.intake import ReviewIntakeService
-from conclave.ledger.repository import LedgerConflictError, LedgerRepository, create_schema
+from conclave.ledger.repository import (
+    LedgerConflictError,
+    LedgerRepository,
+    WorkItemClaimError,
+    create_schema,
+)
 from conclave.orchestration.service import FixturePath, ReviewOrchestrator
 from conclave.reviewers.development import DevelopmentReviewerRuntime
 from conclave.scheduling.service import SchedulerService
@@ -27,6 +33,18 @@ class SchedulerTickRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     at: datetime
+
+
+class RetryWorkRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    additional_attempts: int = 1
+
+
+class CancelWorkRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str
 
 
 def create_app(
@@ -47,9 +65,13 @@ def create_app(
             repository.add_plan_revision(revision)
 
     intake = ReviewIntakeService(repository)
-    scheduler = SchedulerService(repository)
+    scheduler = SchedulerService(
+        repository,
+        max_attempts=settings.worker_max_attempts,
+    )
     orchestrator = ReviewOrchestrator(repository, DevelopmentReviewerRuntime())
     worker = FixtureWorker(repository, intake, orchestrator)
+    auditor = AuditVerifier(repository)
 
     app = FastAPI(
         title="Conclave",
@@ -62,6 +84,7 @@ def create_app(
     app.state.scheduler = scheduler
     app.state.orchestrator = orchestrator
     app.state.worker = worker
+    app.state.auditor = auditor
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -118,6 +141,28 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"review_session_id": session_id, "state": state.value}
 
+    @app.get("/reviews/{session_id}/result")
+    def get_review_result(session_id: str) -> dict[str, Any]:
+        result = repository.get_result(session_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="review result not found")
+        return result.document
+
+    @app.get("/reviews/{session_id}/audit")
+    def verify_review_audit(session_id: str) -> dict[str, Any]:
+        try:
+            verification = auditor.verify_session(session_id)
+        except AuditVerificationError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "review_session_id": verification.session_id,
+            "path": verification.path,
+            "final_state": verification.final_state.value,
+            "event_count": verification.event_count,
+            "invocation_count": verification.invocation_count,
+            "result_hash": verification.result_hash,
+        }
+
     @app.post("/scheduler/tick")
     def scheduler_tick(request: SchedulerTickRequest) -> dict[str, Any]:
         work = scheduler.tick(request.at)
@@ -144,6 +189,8 @@ def create_app(
             worker_id=worker_id,
             now=datetime.now(UTC),
             path=path,
+            lease_seconds=settings.worker_lease_seconds,
+            retry_delay_seconds=settings.worker_retry_delay_seconds,
         )
         if result is None:
             return {"processed": False}
@@ -154,6 +201,68 @@ def create_app(
             "review_session_id": result.session_id,
             "state": result.state.value,
         }
+
+    @app.get("/operations/status")
+    def operations_status() -> dict[str, Any]:
+        now = datetime.now(UTC)
+        metrics = repository.queue_metrics(now)
+        stale_processes = repository.stale_processes(
+            now=now,
+            stale_after_seconds=settings.process_stale_after_seconds,
+        )
+        return {
+            "at": now,
+            "queue": {
+                "counts": metrics.counts,
+                "oldest_claimable_at": metrics.oldest_claimable_at,
+                "expired_leases": metrics.expired_leases,
+            },
+            "processes": [
+                {
+                    "process_id": process.process_id,
+                    "process_type": process.process_type,
+                    "status": process.status,
+                    "heartbeat_at": process.heartbeat_at,
+                    "metadata": process.process_metadata,
+                }
+                for process in repository.list_processes()
+            ],
+            "stale_process_ids": [process.process_id for process in stale_processes],
+        }
+
+    @app.post("/operations/work-items/{work_item_id}/retry")
+    def retry_work_item(
+        work_item_id: str,
+        request: RetryWorkRequest,
+    ) -> dict[str, Any]:
+        try:
+            item = repository.retry_dead_letter(
+                work_item_id=work_item_id,
+                now=datetime.now(UTC),
+                additional_attempts=request.additional_attempts,
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (ValueError, WorkItemClaimError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"work_item_id": item.work_item_id, "status": item.status}
+
+    @app.post("/operations/work-items/{work_item_id}/cancel")
+    def cancel_work_item(
+        work_item_id: str,
+        request: CancelWorkRequest,
+    ) -> dict[str, Any]:
+        try:
+            item = repository.cancel_work_item(
+                work_item_id=work_item_id,
+                now=datetime.now(UTC),
+                reason=request.reason,
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except WorkItemClaimError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"work_item_id": item.work_item_id, "status": item.status}
 
     return app
 

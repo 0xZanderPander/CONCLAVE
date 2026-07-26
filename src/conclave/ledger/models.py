@@ -14,7 +14,10 @@ from sqlalchemy import (
     event,
     inspect,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+POSTGRES_JSON = JSON().with_variant(JSONB(), "postgresql")
 
 
 def utc_now() -> datetime:
@@ -121,19 +124,36 @@ class ReviewOccurrenceRecord(Base):
 
 class SchedulerWorkItemRecord(Base):
     __tablename__ = "scheduler_work_items"
-    __table_args__ = (UniqueConstraint("occurrence_id", name="uq_scheduler_work_item_occurrence"),)
+    __table_args__ = (
+        UniqueConstraint("occurrence_id", name="uq_scheduler_work_item_occurrence"),
+        Index(
+            "ix_scheduler_work_items_claimable",
+            "status",
+            "available_at",
+            "due_at",
+            "work_item_id",
+        ),
+        Index(
+            "ix_scheduler_work_items_lease",
+            "status",
+            "lease_expires_at",
+        ),
+    )
 
     work_item_id: Mapped[str] = mapped_column(String(160), primary_key=True)
     occurrence_id: Mapped[str] = mapped_column(
         ForeignKey("review_occurrences.occurrence_id"), nullable=False
     )
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
     claimed_by: Mapped[str | None] = mapped_column(String(160))
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dead_lettered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(String(1000))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
@@ -231,6 +251,45 @@ class ReviewerInvocationRecord(Base):
     )
 
 
+class ReviewResultRecord(Base):
+    __tablename__ = "review_results"
+    __table_args__ = (UniqueConstraint("session_id", name="uq_review_result_session"),)
+
+    result_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("review_sessions.session_id"), nullable=False, index=True
+    )
+    path: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    contract_version: Mapped[str] = mapped_column(String(60), nullable=False)
+    result_hash: Mapped[str] = mapped_column(String(71), nullable=False, index=True)
+    document: Mapped[dict[str, Any]] = mapped_column(POSTGRES_JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class RuntimeProcessRecord(Base):
+    __tablename__ = "runtime_processes"
+    __table_args__ = (
+        Index(
+            "ix_runtime_processes_status_heartbeat",
+            "status",
+            "heartbeat_at",
+        ),
+    )
+
+    process_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    process_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    process_metadata: Mapped[dict[str, Any]] = mapped_column(
+        POSTGRES_JSON, nullable=False, default=dict
+    )
+
+
 class AuditEventRecord(Base):
     __tablename__ = "audit_events"
     __table_args__ = (
@@ -264,6 +323,7 @@ for immutable_type in (
     ReviewerSlotRecord,
     ReviewOccurrenceRecord,
     RequestSnapshotRecord,
+    ReviewResultRecord,
     AuditEventRecord,
 ):
     event.listen(immutable_type, "before_update", _reject_mutation)

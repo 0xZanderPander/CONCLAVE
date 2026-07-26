@@ -1,11 +1,15 @@
 from conclave.domain.enums import RecommendationCategory
-from conclave.reviewers.runtime import Assessment, ReviewCall
+from conclave.reviewers.runtime import (
+    Assessment,
+    ProviderRegistryRuntime,
+    ReviewCall,
+)
 
 
-class DevelopmentReviewerRuntime:
-    """Local deterministic reviewer used by the fixture API."""
+class DevelopmentReviewerProvider:
+    """Deterministic provider used by fixture and process tests."""
 
-    def review(self, call: ReviewCall) -> Assessment:
+    def invoke(self, call: ReviewCall) -> Assessment:
         return Assessment(
             category=RecommendationCategory.COLLECT_MORE_DATA,
             summary=(
@@ -17,3 +21,11 @@ class DevelopmentReviewerRuntime:
             confidence=0.7,
             evidence_quality="adequate",
         )
+
+
+class DevelopmentReviewerRuntime(ProviderRegistryRuntime):
+    """Local provider registry used by the fixture API and worker process."""
+
+    def __init__(self) -> None:
+        provider = DevelopmentReviewerProvider()
+        super().__init__({"fixture": provider, "deterministic": provider})

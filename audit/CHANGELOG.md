@@ -9,11 +9,72 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 
 | Date | Rev | Requested by | Applied by | Summary |
 |---|---|---|---|---|
+| 2026-07-26 | r6 | Al | Codex | Recorded Phase 1B implementation and Supabase verification; made automatic comparator routing the explicit Phase 2 boundary |
 | 2026-07-24 | r5 | Al | Codex | Removed Marketing MVP coupling; made fixture-based Conclave development current and the first Marketing deployment a later optional ad-performance review connection |
 | 2026-07-24 | r4 | Al | Codex | Made review timing deployment-editable through immutable plan revisions; defined A/B expansion and two-stage C judging; added Marketing-v1 weights, hard triggers, contract `0.2.0`, and executable design fixtures |
 | 2026-07-24 | r3 | Al | Codex | Separated Marketing domain ownership from the Conclave kernel; replaced direct Meta, Telegram, policy, outcome, and learning ownership with versioned request/result/feedback contracts |
 | 2026-07-24 | r2 | Al | Conclave assistant (Cowork session) | Three-reviewer panel, cadence-based ping-pong, tolerance-triggered cross review, tie-breaker, baseline, configurable adjudicator, Hermes learning seam, domain contract, testable Phase 0 gate |
 | 2026-07-14 | r1 | Al | Al | Initial Marketing-first, read-only MVP design (baseline of these docs) |
+
+---
+
+## r6 — 2026-07-26
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** `README.md`, `MVP_project_architecture.md`,
+`MVP_build_roadmap.md`, `MVP_architecture_flow.mmd`,
+`audit/CHANGELOG.md`, Phase 1B source, migration, and tests
+
+### Why
+
+Phase 1B moved from design into working code. The documents still called the
+project proposed, described modules and endpoints that did not exist, and did
+not clearly separate deterministic fixture-path execution from future automatic
+comparator routing.
+
+### What changed
+
+1. The status now records Phase 1A and 1B as complete and makes Phase 2
+   task-pack intake and automatic comparator routing the next build.
+2. Migration `20260726_0006` adds immutable results, work retry and dead-letter
+   fields, queue indexes, and runtime-process health records.
+3. Persistent scheduler and worker commands now use database leases, retries,
+   dead-letter recovery, cancellation, heartbeats, and stale-process reporting.
+4. Reviewer calls now pass through a common provider registry. Provider errors
+   and malformed output retry within a fixed limit, and there is no silent
+   provider substitution.
+5. A-only, A/B agreement, cross-review, and reviewer-C fixture paths now create
+   one contract-valid, immutable result.
+6. The audit verifier now checks contiguous event order, legal transitions,
+   exact path shape, invocation count, shared snapshot, result ordering, result
+   hash, and result contract.
+7. All four fixture paths and concurrent work claiming passed against the
+   dedicated Conclave Supabase database. Synthetic integration rows were
+   removed after the run.
+8. The architecture document now matches the real package layout, current
+   tables, local endpoints, work queue, process health, and decision verifier.
+9. The flowchart now shows the persistent worker, leased queue, operational
+   controls, audit verifier, and the Phase 2 comparator boundary.
+
+### Deferrals adjusted
+
+- Automatic selection of A-only, A/B, cross-review, or C from materiality,
+  weighted disagreement, hard triggers, and failed-goal input is Phase 2.
+- Real model providers, provider-specific timeout and cost limits, caller
+  authentication, external result delivery, feedback, and reviewer evaluation
+  remain later-phase work.
+- Before real provider calls, the worker lease must be longer than the bounded
+  provider retry window or must be renewed during the call.
+
+### Not changed
+
+- Conclave remains an independent structured decision-review system.
+- Marketing OS remains separate and has no Conclave dependency.
+- Any future Marketing connection remains optional ad-performance review only.
+- Conclave has no platform credential, campaign control, spend authority,
+  Marketing decision authority, outcome ownership, or Marketing learning
+  ownership.
 
 ---
 

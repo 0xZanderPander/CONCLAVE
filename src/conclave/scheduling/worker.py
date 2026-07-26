@@ -1,11 +1,22 @@
 from dataclasses import dataclass
 from datetime import datetime
 
+from pydantic import ValidationError
+
+from conclave.contracts.validation import ContractValidationError
 from conclave.domain.enums import ReviewState
 from conclave.fixtures import build_request_for_occurrence
 from conclave.intake import ReviewIntakeService
-from conclave.ledger.repository import LedgerRepository
-from conclave.orchestration.service import FixturePath, ReviewOrchestrator
+from conclave.ledger.repository import LedgerConflictError, LedgerRepository
+from conclave.orchestration.service import (
+    FixturePath,
+    OrchestrationStateError,
+    ReviewOrchestrator,
+)
+from conclave.reviewers.runtime import (
+    ReviewerProviderExhaustedError,
+    UnknownReviewerProviderError,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +44,8 @@ class FixtureWorker:
         worker_id: str,
         now: datetime,
         path: FixturePath = FixturePath.A_ONLY,
-        lease_seconds: int = 60,
+        lease_seconds: int = 300,
+        retry_delay_seconds: int = 30,
     ) -> WorkerResult | None:
         work_item = self._repository.claim_next_work_item(
             worker_id=worker_id,
@@ -68,10 +80,23 @@ class FixtureWorker:
                 state=state,
             )
         except Exception as exc:
+            retryable = not isinstance(
+                exc,
+                (
+                    ContractValidationError,
+                    LedgerConflictError,
+                    OrchestrationStateError,
+                    ReviewerProviderExhaustedError,
+                    UnknownReviewerProviderError,
+                    ValidationError,
+                ),
+            )
             self._repository.fail_work_item(
                 work_item_id=work_item.work_item_id,
                 worker_id=worker_id,
                 now=now,
                 error=str(exc),
+                retryable=retryable,
+                retry_delay_seconds=retry_delay_seconds,
             )
             raise
