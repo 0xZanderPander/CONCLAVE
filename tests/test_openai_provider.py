@@ -7,6 +7,12 @@ import pytest
 from conclave.domain.enums import ReviewerSlot, ReviewerType, ReviewStage
 from conclave.plans.models import ProviderPolicy
 from conclave.reviewers.openai import OpenAIResponsesProvider
+from conclave.reviewers.prompts import (
+    REVIEWER_A_PROMPT_VERSION,
+    REVIEWER_A_ROLE_VERSION,
+    REVIEWER_B_PROMPT_VERSION,
+    REVIEWER_B_ROLE_VERSION,
+)
 from conclave.reviewers.runtime import (
     ProviderRegistryRuntime,
     ReviewCall,
@@ -14,18 +20,27 @@ from conclave.reviewers.runtime import (
 )
 
 
-def _call(*, policy: ProviderPolicy | None = None) -> ReviewCall:
+def _call(
+    *,
+    policy: ProviderPolicy | None = None,
+    slot: ReviewerSlot = ReviewerSlot.A,
+) -> ReviewCall:
+    role_version, prompt_version = (
+        (REVIEWER_A_ROLE_VERSION, REVIEWER_A_PROMPT_VERSION)
+        if slot == ReviewerSlot.A
+        else (REVIEWER_B_ROLE_VERSION, REVIEWER_B_PROMPT_VERSION)
+    )
     return ReviewCall(
         session_id="rs_openai_test",
         snapshot_hash="sha256:test",
-        slot=ReviewerSlot.A,
+        slot=slot,
         stage=ReviewStage.INDEPENDENT,
         round=1,
         reviewer_type=ReviewerType.MODEL,
         provider="openai",
         model="gpt-5.6-terra",
-        role_version="marketing-reviewer-a-v1",
-        prompt_version="marketing-assessment-p1",
+        role_version=role_version,
+        prompt_version=prompt_version,
         schema_version="assessment-v1",
         snapshot={
             "sections": {
@@ -187,7 +202,31 @@ def test_openai_provider_rejects_over_budget_input_before_network() -> None:
     assert raised.value.attempts[0].status == "budget_exceeded"
 
 
-def test_openai_provider_rejects_unapproved_reviewer_slots() -> None:
+def test_openai_provider_routes_reviewer_b_to_its_independent_prompt() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=_completed_response())
+
+    provider = OpenAIResponsesProvider(
+        api_key="test-key",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    execution = ProviderRegistryRuntime({"openai": provider}).review(
+        _call(slot=ReviewerSlot.B)
+    )
+
+    assert execution.output.category.value == "collect_more_data"
+    payload = json.loads(requests[0].content)
+    assert "independent audit reviewer" in payload["instructions"]
+    assert "Reviewer A's claims" in payload["instructions"]
+    assert '"prior_claims":[]' in payload["input"]
+    assert '"peer_assessments":[]' in payload["input"]
+
+
+def test_openai_provider_rejects_peer_content_in_an_independent_round() -> None:
     called = False
 
     def handler(_request: httpx.Request) -> httpx.Response:
@@ -199,7 +238,34 @@ def test_openai_provider_rejects_unapproved_reviewer_slots() -> None:
         api_key="test-key",
         client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
-    call = _call().model_copy(update={"slot": ReviewerSlot.B})
+    call = _call(slot=ReviewerSlot.B).model_copy(
+        update={"prior_claims": ("Reviewer A said pause.",)}
+    )
+
+    with pytest.raises(ReviewerProviderExhaustedError, match="failed after 1 attempt"):
+        ProviderRegistryRuntime({"openai": provider}).review(call)
+
+    assert called is False
+
+
+def test_openai_provider_rejects_unapproved_cross_review_prompt() -> None:
+    called = False
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(200, json=_completed_response())
+
+    provider = OpenAIResponsesProvider(
+        api_key="test-key",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    call = _call().model_copy(
+        update={
+            "stage": ReviewStage.CROSS_REVIEW,
+            "round": 2,
+        }
+    )
 
     with pytest.raises(ReviewerProviderExhaustedError, match="failed after 1 attempt"):
         ProviderRegistryRuntime({"openai": provider}).review(call)

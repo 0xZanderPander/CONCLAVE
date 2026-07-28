@@ -233,7 +233,10 @@ Reviewer A runs for every due eligible occurrence. Reviewer B joins when:
 - the occurrence is selected by the configured audit sample.
 
 When B joins, it uses A's exact snapshot. A triggered B invocation never moves
-B's next scheduled audit. Reviewer C has no cadence.
+B's next scheduled audit. Both independent calls have empty prior-claim and
+peer-assessment fields. Reviewer B has a separate versioned role and prompt,
+and the production adapter rejects any independent call containing another
+reviewer's content. Reviewer C has no cadence.
 
 ## Fixed MVP State Machine
 
@@ -378,8 +381,17 @@ review(snapshot, role, round, prior_claims, prompt_version, schema_version)
 The runtime is selected explicitly as `fixture` or `openai`. Non-local
 deployments cannot start with the fixture runtime, and provider names never
 fall back silently. The first production adapter uses OpenAI Responses for
-reviewer A with `store=false`, no tools, strict JSON Schema output, a versioned
-evidence-only prompt, and no external memory or browsing.
+reviewers A and B with `store=false`, no tools, strict JSON Schema output,
+separate versioned evidence-only prompts, and no external memory or browsing.
+Only the blind independent stage is approved on this adapter. Cross review and
+Reviewer C are rejected before any provider request until their prompts are
+separately reviewed.
+
+The Phase 4A live gate intentionally used the same OpenAI model in both slots
+to verify the common rail. This is not evidence of multi-model benefit.
+Because provider, model, reviewer type, role, and prompt are configured per
+slot, a later deployment can put a different model provider or a non-model
+checker in B without changing orchestration or comparison logic.
 
 Each plan slot carries an editable provider policy. The initial approved limits
 are two attempts, 90 seconds per attempt, 30,000 input characters, 4,000 output

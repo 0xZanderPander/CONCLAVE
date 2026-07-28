@@ -5,7 +5,8 @@
 Active MVP build. Foundation phases 1A and 1B, the transport-neutral event
 boundary, Phase 2 task-pack routing, and the approved Phase 3 reviewer-A
 provider boundary are implemented and verified with sample data, local tests,
-and the dedicated Conclave Supabase project.
+and the dedicated Conclave Supabase project. Phase 4A now adds the production
+Reviewer B boundary and the first live same-snapshot A/B comparison.
 
 The normal worker now selects A-only, A/B agreement, cross-review, or reviewer C
 from request and recommendation materiality, scheduled and failed-goal
@@ -16,11 +17,13 @@ Every new session pins an immutable task-pack revision. Automatic reviews can
 resume from any legal partial state, and the decision verifier recomputes the
 route from stored reviewer outputs rather than trusting recorded labels.
 
-Phase 3 adds a stateless, tool-free OpenAI Responses adapter for reviewer A,
-strict structured output, explicit runtime selection, bounded retries and cost
-limits, durable provider-attempt telemetry, and deterministic normalization of
-materiality and source facts. The live reviewer-A acceptance gate passed on
-2026-07-28.
+The OpenAI Responses adapter now supports independently versioned A and B
+roles for their blind first round. Both use strict structured output, explicit
+runtime selection, bounded retries and cost limits, durable provider-attempt
+telemetry, and deterministic normalization of materiality and source facts.
+The live Reviewer-A gate and live same-snapshot A/B gate passed on 2026-07-28.
+Using the same OpenAI model in that A/B gate proves plumbing and isolation; it
+does not prove that the panel outperforms one model.
 
 Conclave does not depend on Marketing OS, and Marketing OS does not depend on
 Conclave.
@@ -447,19 +450,22 @@ Completed foundation:
     conservative merge, and automatic panel routing
 11. explicit fixture or OpenAI runtime selection with no production fixture
     fallback
-12. a stateless, tool-free reviewer-A OpenAI Responses adapter with strict
-    structured output and prompt-injection boundaries
+12. a stateless, tool-free OpenAI Responses adapter for blind, independently
+    prompted reviewers A and B with strict structured output and
+    prompt-injection boundaries
 13. durable provider attempts, request/response IDs, token usage, latency,
     cost, finish status, and pricing-version metadata through migration `0009`
 14. provider-attempt health and accounting summaries in the existing
     operational status API and CLI output
+15. exact same-snapshot A/B enforcement, empty peer context in the independent
+    round, slot-specific prompt approval, and a passing live comparison gate
 
 Next:
 
-1. review the production reviewer-B role, prompt, and independence boundary
-2. approve the reviewer-B provider choice and limits
-3. implement and test the production reviewer-B adapter behavior before
-   beginning the Phase 4A provider rollout
+1. design and review the bounded A/B cross-review prompts
+2. design and review Reviewer C's blind assessment and separate judgment prompt
+3. add a second provider adapter and run a cross-provider A/B evaluation before
+   making any claim about multi-model improvement
 
 Non-local API mode requires explicit bearer authentication and caller scopes.
 Local fixture mode remains available only in development and test.

@@ -284,26 +284,39 @@ model unless the dedicated opt-in gate is selected.
 
 ## Phase 4A: Reviewer B and Comparison
 
+**Status:** complete. Reviewer B has its own approved versioned role and
+independent prompt. The live same-snapshot A/B acceptance gate passed on
+2026-07-28 using OpenAI for both slots. That gate proves routing, isolation,
+validation, telemetry, and comparison behavior. It does not prove that a
+same-model panel or Conclave as a whole improves decisions.
+
 ### Build
 
-- reviewer B on its independent cadence and configured expansion triggers
-- blind first-round enforcement
-- exact same-snapshot verification
-- ad-performance weighted claim and recommendation comparator
-- fixed disagreement vocabulary
-- distance-versus-tolerance calculation plus hard-conflict triggers
-- deterministic within-tolerance merge
-- readable agreement and disagreement summary
+- [x] reviewer B on its independent cadence and configured expansion triggers
+- [x] blind first-round enforcement
+- [x] exact same-snapshot verification
+- [x] separate approved role and prompt versions for A and B
+- [x] ad-performance weighted claim and recommendation comparator
+- [x] fixed disagreement vocabulary
+- [x] distance-versus-tolerance calculation plus hard-conflict triggers
+- [x] deterministic within-tolerance merge
+- [x] readable agreement and disagreement summary
+- [x] live same-snapshot A/B acceptance case
 
 ### Exit Gate
 
-- Reviewer B cannot see reviewer-A content before storing its own assessment.
-- Known category, direction, magnitude, quality, and integrity conflicts are
+- [x] Reviewer B cannot see reviewer-A content before storing its own assessment.
+- [x] Known category, direction, magnitude, quality, and integrity conflicts are
   detected.
-- A-only, scheduled-B, request-material, recommendation-material, failed-goal,
+- [x] A-only, scheduled-B, request-material, recommendation-material, failed-goal,
   and audit-sample paths invoke exactly the intended reviewer slots.
-- Weighted comparison fixtures produce the expected distances and hard triggers.
-- A provider failure never silently substitutes a reviewer.
+- [x] Weighted comparison fixtures produce the expected distances and hard triggers.
+- [x] A provider failure never silently substitutes a reviewer.
+
+Each reviewer slot remains independently configurable by reviewer type,
+provider, model, role version, and prompt version. The next evidence-quality
+step is a cross-provider A/B evaluation. Provider diversity is a deployment
+lever, not a requirement baked into the Conclave kernel.
 
 ## Phase 4B: Cross Review and Tie-Breaker
 
@@ -484,10 +497,10 @@ Its scope is limited to optional ad-performance review:
 
 ## Immediate Next Build
 
-1. Review and approve the reviewer-B production prompt, independence checks,
-   and provider choice for Phase 4A.
-2. Implement reviewer B behind the same provider-neutral runtime and telemetry
-   boundary.
-3. Run one same-snapshot live A/B independence and comparison acceptance case.
-4. Keep reviewer C on fixtures until its production prompt and two-stage
-   judgment behavior receive separate approval.
+1. Review and approve separate cross-review prompts for A and B.
+2. Implement one bounded cross-review round without weakening the stored
+   independent baseline.
+3. Review and approve Reviewer C's blind assessment and separate judgment
+   prompt before enabling C on a live provider.
+4. Add a second provider adapter and use it in an A/B evaluation before
+   treating provider diversity as validated.

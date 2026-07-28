@@ -9,6 +9,7 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 
 | Date | Rev | Requested by | Applied by | Summary |
 |---|---|---|---|---|
+| 2026-07-28 | r13 | Al | Codex | Completed Phase 4A with a blind Reviewer-B prompt, strict same-snapshot isolation, and a passing live A/B comparison gate |
 | 2026-07-28 | r12 | Al | Codex | Completed the live Phase 3 Reviewer-A gate and made materiality and source facts deterministic rather than model-authoritative |
 | 2026-07-27 | r11 | Al | Codex | Added provider-neutral operational metrics while the live Reviewer-A credential remains pending |
 | 2026-07-27 | r10 | Al | Codex | Implemented the approved Phase 3 reviewer-A provider boundary, limits, prompt, durable attempt telemetry, migration 0009, and hosted verification |
@@ -21,6 +22,58 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 | 2026-07-24 | r3 | Al | Codex | Separated Marketing domain ownership from the Conclave kernel; replaced direct Meta, Telegram, policy, outcome, and learning ownership with versioned request/result/feedback contracts |
 | 2026-07-24 | r2 | Al | Conclave assistant (Cowork session) | Three-reviewer panel, cadence-based ping-pong, tolerance-triggered cross review, tie-breaker, baseline, configurable adjudicator, Hermes learning seam, domain contract, testable Phase 0 gate |
 | 2026-07-14 | r1 | Al | Al | Initial Marketing-first, read-only MVP design (baseline of these docs) |
+
+---
+
+## r13 — 2026-07-28
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** `README.md`, `MVP_project_architecture.md`,
+`MVP_build_roadmap.md`, `audit/CHANGELOG.md`, OpenAI reviewer prompts and
+adapter, and reviewer-routing and live-provider tests
+
+### Why
+
+Al approved using OpenAI for the Reviewer-B acceptance test while identifying
+independent perspectives from different agents or providers as the likely
+stronger production design.
+
+### What changed
+
+1. Reviewer B now has a separate approved role version and independent-audit
+   prompt.
+2. The OpenAI adapter routes A and B through their own approved prompt
+   versions and supports only the blind independent stage.
+3. Independent provider calls containing prior claims or peer assessments are
+   rejected before any network request.
+4. Tests prove A and B receive the exact same immutable snapshot with empty
+   peer context before comparison.
+5. The existing deterministic comparator records the A/B distance, tolerance,
+   hard triggers, and whether cross review is required.
+6. Reviewer slots remain independently configurable by provider, model,
+   reviewer type, role, and prompt. A second provider can be added without
+   changing the kernel.
+
+### Verification
+
+- The opt-in live A/B gate passed with two successful independent OpenAI
+  assessments and one durable comparison.
+- Any required cross-review call is rejected locally because Phase 4B prompts
+  are not yet approved.
+- Ruff passed.
+- The full non-live suite passed with 92 tests; six opt-in live or PostgreSQL
+  tests were skipped.
+
+### Not changed
+
+- No second model provider was added.
+- The same-provider live gate is not treated as evidence that a panel
+  outperforms one model.
+- Cross review and Reviewer C remain fixture-only until their prompts receive
+  separate review and approval.
+- The Marketing boundary and deterministic A/B/C protocol are unchanged.
+- Conclave still performs no caller or campaign action.
 
 ---
 

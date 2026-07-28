@@ -5,7 +5,14 @@ from typing import Any
 import httpx
 
 from conclave.domain.enums import ReviewerSlot, ReviewStage
-from conclave.reviewers.prompts import REVIEWER_A_INSTRUCTIONS
+from conclave.reviewers.prompts import (
+    REVIEWER_A_INSTRUCTIONS,
+    REVIEWER_A_PROMPT_VERSION,
+    REVIEWER_A_ROLE_VERSION,
+    REVIEWER_B_INSTRUCTIONS,
+    REVIEWER_B_PROMPT_VERSION,
+    REVIEWER_B_ROLE_VERSION,
+)
 from conclave.reviewers.runtime import (
     Assessment,
     PermanentReviewerProviderError,
@@ -14,7 +21,6 @@ from conclave.reviewers.runtime import (
     RetryableReviewerProviderError,
     ReviewCall,
     ReviewerBudgetExceededError,
-    ReviewerCJudgment,
 )
 
 _RETRYABLE_STATUS_CODES = {408, 409, 429, 500, 502, 503, 504}
@@ -78,13 +84,36 @@ class OpenAIResponsesProvider:
         self._client = client or httpx.Client()
 
     def invoke(self, call: ReviewCall) -> ProviderCallResult:
-        if call.slot != ReviewerSlot.A:
+        approved = {
+            ReviewerSlot.A: (
+                REVIEWER_A_ROLE_VERSION,
+                REVIEWER_A_PROMPT_VERSION,
+                REVIEWER_A_INSTRUCTIONS,
+            ),
+            ReviewerSlot.B: (
+                REVIEWER_B_ROLE_VERSION,
+                REVIEWER_B_PROMPT_VERSION,
+                REVIEWER_B_INSTRUCTIONS,
+            ),
+        }
+        if call.stage != ReviewStage.INDEPENDENT or call.slot not in approved:
             raise PermanentReviewerProviderError(
-                f"the production prompt for reviewer {call.slot.value} is not approved"
+                f"the production prompt for reviewer {call.slot.value} during "
+                f"{call.stage.value} is not approved"
             )
-        output_model = (
-            ReviewerCJudgment if call.stage == ReviewStage.JUDGING else Assessment
-        )
+        if call.prior_claims or call.peer_assessments:
+            raise PermanentReviewerProviderError(
+                "an independent reviewer call cannot contain peer-review content"
+            )
+        role_version, prompt_version, instructions = approved[call.slot]
+        if (
+            call.role_version != role_version
+            or call.prompt_version != prompt_version
+        ):
+            raise PermanentReviewerProviderError(
+                f"reviewer {call.slot.value} role or prompt version is not approved"
+            )
+        output_model = Assessment
         context = {
             "session_id": call.session_id,
             "snapshot_hash": call.snapshot_hash,
@@ -101,7 +130,7 @@ class OpenAIResponsesProvider:
             ],
         }
         input_text = json.dumps(context, sort_keys=True, separators=(",", ":"))
-        total_input_characters = len(REVIEWER_A_INSTRUCTIONS) + len(input_text)
+        total_input_characters = len(instructions) + len(input_text)
         policy = call.provider_policy
         if total_input_characters > policy.max_input_characters:
             raise ReviewerBudgetExceededError(
@@ -116,14 +145,10 @@ class OpenAIResponsesProvider:
                 "the reviewer request exceeds its approved preflight cost ceiling"
             )
 
-        format_name = (
-            "conclave_reviewer_c_judgment"
-            if call.stage == ReviewStage.JUDGING
-            else "conclave_assessment"
-        )
+        format_name = "conclave_assessment"
         payload = {
             "model": call.model,
-            "instructions": REVIEWER_A_INSTRUCTIONS,
+            "instructions": instructions,
             "input": input_text,
             "store": False,
             "tools": [],

@@ -140,6 +140,12 @@ def test_automatic_route_selects_ab_for_scheduled_b_within_tolerance() -> None:
             "request_material",
         ]
         assert len(runtime.calls) == 2
+        assert runtime.calls[0].snapshot_hash == runtime.calls[1].snapshot_hash
+        assert runtime.calls[0].snapshot == runtime.calls[1].snapshot
+        assert runtime.calls[0].prior_claims == ()
+        assert runtime.calls[1].prior_claims == ()
+        assert runtime.calls[0].peer_assessments == ()
+        assert runtime.calls[1].peer_assessments == ()
         events = repository.list_events(accepted.session_id)
         comparisons = [
             event for event in events if event.event_type == DomainEventType.COMPARISON_COMPLETED
