@@ -314,6 +314,7 @@ def create_app(
     ) -> dict[str, Any]:
         now = datetime.now(UTC)
         metrics = repository.queue_metrics(now)
+        provider_metrics = repository.provider_metrics()
         stale_processes = repository.stale_processes(
             now=now,
             stale_after_seconds=settings.process_stale_after_seconds,
@@ -324,6 +325,13 @@ def create_app(
                 "counts": metrics.counts,
                 "oldest_claimable_at": metrics.oldest_claimable_at,
                 "expired_leases": metrics.expired_leases,
+            },
+            "provider_attempts": {
+                "counts": provider_metrics.counts,
+                "total_tokens": provider_metrics.total_tokens,
+                "total_cost_usd": provider_metrics.total_cost_usd,
+                "average_latency_ms": provider_metrics.average_latency_ms,
+                "last_completed_at": provider_metrics.last_completed_at,
             },
             "processes": [
                 {

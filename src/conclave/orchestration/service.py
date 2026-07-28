@@ -514,6 +514,11 @@ class ReviewOrchestrator:
             if stage == ReviewStage.JUDGING:
                 if not isinstance(output, ReviewerCJudgment):
                     raise TypeError("reviewer C judging must return ReviewerCJudgment")
+                output = self._task_packs.normalize_judgment(
+                    snapshot,
+                    output,
+                    task_pack=task_pack,
+                )
                 self._task_packs.validate_judgment(
                     snapshot,
                     output,
@@ -522,6 +527,11 @@ class ReviewOrchestrator:
             else:
                 if not isinstance(output, Assessment):
                     raise TypeError("assessment stage returned a reviewer-C judgment")
+                output = self._task_packs.normalize_assessment(
+                    snapshot,
+                    output,
+                    task_pack=task_pack,
+                )
                 self._task_packs.validate_assessment(
                     snapshot,
                     output,

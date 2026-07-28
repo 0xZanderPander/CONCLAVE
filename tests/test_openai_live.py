@@ -8,6 +8,10 @@ from conclave.fixtures import load_design_plan_revisions, load_request_fixture
 from conclave.intake import ReviewIntakeService
 from conclave.orchestration.service import FixturePath, ReviewOrchestrator
 from conclave.reviewers.openai import OpenAIResponsesProvider
+from conclave.reviewers.prompts import (
+    REVIEWER_A_PROMPT_VERSION,
+    REVIEWER_A_ROLE_VERSION,
+)
 from conclave.reviewers.runtime import ProviderRegistryRuntime
 from tests.helpers import create_test_engine, create_test_repository
 
@@ -30,8 +34,8 @@ def test_live_reviewer_a_produces_an_auditable_valid_baseline() -> None:
                     update={
                         "provider": "openai",
                         "model": "gpt-5.6-terra",
-                        "role_version": "marketing-reviewer-a-v1",
-                        "prompt_version": "marketing-assessment-p1",
+                        "role_version": REVIEWER_A_ROLE_VERSION,
+                        "prompt_version": REVIEWER_A_PROMPT_VERSION,
                     }
                 )
                 revision = revision.model_copy(update={"slots": slots})
@@ -58,7 +62,11 @@ def test_live_reviewer_a_produces_an_auditable_valid_baseline() -> None:
         assert attempts
         assert attempts[-1].status == "succeeded"
         assert result is not None
-        assert result.document["baseline"]["reviewer"] == "A"
+        assert (
+            result.document["baseline"]["category"]
+            == result.document["recommendation"]["category"]
+        )
+        assert result.document["baseline"]["changed_by_panel"] is False
         assert result.document["panel_metadata"]["reviewers"][0]["attempt_count"] >= 1
     finally:
         engine.dispose()

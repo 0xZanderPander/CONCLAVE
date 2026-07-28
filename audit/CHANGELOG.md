@@ -9,6 +9,8 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 
 | Date | Rev | Requested by | Applied by | Summary |
 |---|---|---|---|---|
+| 2026-07-28 | r12 | Al | Codex | Completed the live Phase 3 Reviewer-A gate and made materiality and source facts deterministic rather than model-authoritative |
+| 2026-07-27 | r11 | Al | Codex | Added provider-neutral operational metrics while the live Reviewer-A credential remains pending |
 | 2026-07-27 | r10 | Al | Codex | Implemented the approved Phase 3 reviewer-A provider boundary, limits, prompt, durable attempt telemetry, migration 0009, and hosted verification |
 | 2026-07-26 | r9 | Al | Codex | Completed the accepted Phase 2 hardening: pinned task-pack revisions, explicit C judgments, resumable execution, reconstructive audit checks, and non-local caller authentication |
 | 2026-07-26 | r8 | Al | Codex | Started Phase 2 with a registered Marketing-v1 task pack, eligibility validation, weighted comparison, hard triggers, and automatic route selection |
@@ -19,6 +21,91 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 | 2026-07-24 | r3 | Al | Codex | Separated Marketing domain ownership from the Conclave kernel; replaced direct Meta, Telegram, policy, outcome, and learning ownership with versioned request/result/feedback contracts |
 | 2026-07-24 | r2 | Al | Conclave assistant (Cowork session) | Three-reviewer panel, cadence-based ping-pong, tolerance-triggered cross review, tie-breaker, baseline, configurable adjudicator, Hermes learning seam, domain contract, testable Phase 0 gate |
 | 2026-07-14 | r1 | Al | Al | Initial Marketing-first, read-only MVP design (baseline of these docs) |
+
+---
+
+## r12 — 2026-07-28
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** `README.md`, `MVP_project_architecture.md`,
+`MVP_build_roadmap.md`, `audit/CHANGELOG.md`, `.gitignore`, reviewer prompt,
+task-pack registry, orchestration, event projection, and tests
+
+### Why
+
+Al added an isolated OpenAI API key and authorized testing within a $10
+dashboard budget. The first live assessment was structurally valid but exposed
+an important boundary issue: the model labeled an experiment non-material even
+though the pinned task pack defines experiments as material.
+
+### What changed
+
+1. Conclave now deterministically replaces model-supplied materiality,
+   tracking health, optimization eligibility, and primary conversion before
+   task-pack validation and persistence.
+2. The model remains responsible for its recommendation, claims, confidence,
+   evidence-quality judgment, risk, actions, and experiment proposal. It is not
+   authoritative for source facts or routing policy.
+3. Reviewer-A prompt `marketing-assessment-p2` states the materiality rule and
+   the deterministic normalization boundary.
+4. Reviewer completion events identify the fields controlled by Conclave.
+5. `.env` editor swap files are ignored so a temporary editor artifact cannot
+   be accidentally committed with a credential.
+
+### Verification
+
+- The first live call proved API access and strict structured output, then was
+  correctly rejected for conflicting materiality.
+- After deterministic normalization, a second live review passed the provider,
+  task-pack, orchestration, baseline, telemetry, and ledger stages; its test
+  then exposed an unrelated stale baseline assertion.
+- The final bounded live reviewer-A gate passed cleanly after correcting that
+  assertion.
+- Ruff passed, and the full non-live regression suite passed with 90 tests;
+  only the four opt-in PostgreSQL tests and the live-provider gate were skipped.
+- No API key or raw provider response was printed, read into the ledger, or
+  committed.
+
+### Not changed
+
+- Reviewer B and C production prompts remain unimplemented and unapproved.
+- The A/B/C protocol and Marketing boundary are unchanged.
+- Conclave remains a recommendation-review module and performs no caller
+  action.
+
+---
+
+## r11 — 2026-07-27
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** `README.md`, `MVP_project_architecture.md`,
+`MVP_build_roadmap.md`, `audit/CHANGELOG.md`, ledger repository, API, CLI, and
+tests
+
+### Why
+
+The live Reviewer-A acceptance gate is waiting for an OpenAI API key. Work can
+continue safely on provider-neutral operational scaffolding without changing
+reviewer prompts, provider behavior, or the fixed A/B/C protocol.
+
+### What changed
+
+1. The ledger now summarizes provider-attempt counts by status, total tokens,
+   total estimated cost, average latency, and the most recent completion time.
+2. `GET /operations/status` and the `queue-status` CLI output expose the same
+   safe aggregate view.
+3. The summary is built only from the durable attempt ledger. It does not
+   expose credentials, submitted evidence, raw provider responses, or
+   assessment content.
+
+### Not changed
+
+- No live provider call was made.
+- Reviewer B and C production prompts remain unimplemented and unapproved.
+- No `.env` file or credential was created, read, or committed.
+- The review protocol, task-pack routing, and Marketing boundary are unchanged.
 
 ---
 

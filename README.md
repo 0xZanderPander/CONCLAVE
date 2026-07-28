@@ -18,9 +18,9 @@ route from stored reviewer outputs rather than trusting recorded labels.
 
 Phase 3 adds a stateless, tool-free OpenAI Responses adapter for reviewer A,
 strict structured output, explicit runtime selection, bounded retries and cost
-limits, and durable provider-attempt telemetry. No live model call has been
-made because no OpenAI API key is configured. The final Phase 3 live
-reviewer-A acceptance run therefore remains open.
+limits, durable provider-attempt telemetry, and deterministic normalization of
+materiality and source facts. The live reviewer-A acceptance gate passed on
+2026-07-28.
 
 Conclave does not depend on Marketing OS, and Marketing OS does not depend on
 Conclave.
@@ -451,13 +451,14 @@ Completed foundation:
     structured output and prompt-injection boundaries
 13. durable provider attempts, request/response IDs, token usage, latency,
     cost, finish status, and pricing-version metadata through migration `0009`
+14. provider-attempt health and accounting summaries in the existing
+    operational status API and CLI output
 
 Next:
 
-1. configure an OpenAI API key in the isolated test environment
-2. run one eligible reviewer-A snapshot through the live adapter and verify the
-   stored assessment, baseline, events, and telemetry
-3. approve the production reviewer-B prompt and adapter behavior before
+1. review the production reviewer-B role, prompt, and independence boundary
+2. approve the reviewer-B provider choice and limits
+3. implement and test the production reviewer-B adapter behavior before
    beginning the Phase 4A provider rollout
 
 Non-local API mode requires explicit bearer authentication and caller scopes.

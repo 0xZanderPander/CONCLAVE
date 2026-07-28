@@ -230,6 +230,12 @@ def test_provider_attempts_are_immutable_and_update_invocation_telemetry(
     assert stored_invocation.total_tokens == 125
     assert stored_invocation.cost_usd == 0.002
     assert stored_invocation.provider_response_id == "resp_test"
+    metrics = repository.provider_metrics()
+    assert metrics.counts == {"succeeded": 1}
+    assert metrics.total_tokens == 125
+    assert metrics.total_cost_usd == 0.002
+    assert metrics.average_latency_ms == 125
+    assert metrics.last_completed_at is not None
     assert [event.event_type for event in repository.list_events(review_session.session_id)] == [
         "session_created",
         "snapshot_stored",

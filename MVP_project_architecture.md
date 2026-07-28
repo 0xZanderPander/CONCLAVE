@@ -392,6 +392,13 @@ ledger stores request and response IDs, token counts, reasoning-token counts,
 latency, cost, finish status, error category, and pricing version. It never
 stores raw provider responses, hidden reasoning, or credentials.
 
+Before task-pack validation and persistence, Conclave replaces model-supplied
+materiality, tracking health, optimization eligibility, and primary conversion
+with deterministic values from the pinned task pack and immutable snapshot.
+These fields are identified as deterministic in the completion event. The
+model supplies the recommendation; it does not define the policy facts used to
+route that recommendation.
+
 Reviewer C uses two different output contracts. The first invocation has no A/B
 content and returns a normal assessment. The second receives C's stored
 assessment plus A/B final claims and returns an explicit judgment:
@@ -541,7 +548,8 @@ Implemented local fixture endpoints:
   stream-sequence cursor
 - `POST /scheduler/tick` — expand fixture schedules
 - `POST /worker/run-once` — process one fixture work item
-- `GET /operations/status` — inspect queue and process health
+- `GET /operations/status` — inspect queue, process, and provider-attempt
+  health, including tokens, cost, average latency, and latest completion
 - `POST /operations/work-items/{work_item_id}/retry` — recover dead-letter work
 - `POST /operations/work-items/{work_item_id}/cancel` — cancel unfinished work
 - `GET /health`

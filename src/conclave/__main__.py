@@ -151,6 +151,7 @@ def main() -> None:
     elif args.command == "queue-status":
         now = datetime.now(UTC)
         metrics = repository.queue_metrics(now)
+        provider_metrics = repository.provider_metrics()
         stale_processes = repository.stale_processes(
             now=now,
             stale_after_seconds=settings.process_stale_after_seconds,
@@ -167,6 +168,17 @@ def main() -> None:
                             else None
                         ),
                         "expired_leases": metrics.expired_leases,
+                    },
+                    "provider_attempts": {
+                        "counts": provider_metrics.counts,
+                        "total_tokens": provider_metrics.total_tokens,
+                        "total_cost_usd": provider_metrics.total_cost_usd,
+                        "average_latency_ms": provider_metrics.average_latency_ms,
+                        "last_completed_at": (
+                            provider_metrics.last_completed_at.isoformat()
+                            if provider_metrics.last_completed_at
+                            else None
+                        ),
                     },
                     "processes": [
                         {

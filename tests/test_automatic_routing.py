@@ -307,7 +307,7 @@ def test_invalid_task_pack_output_fails_before_completed_assessment_is_stored() 
 
         with pytest.raises(
             ContractValidationError,
-            match="optimization eligibility conflicts",
+            match="optimization-ineligible evidence",
         ):
             orchestrator.run(accepted.session_id, now=datetime.now(UTC))
 

@@ -62,6 +62,31 @@ def test_registered_task_pack_matches_request_and_calculates_materiality() -> No
     assert set(weak.reasons) == {"partial_evidence", "insufficient_evidence"}
 
 
+def test_task_pack_normalizes_model_supplied_deterministic_facts() -> None:
+    registry = default_task_pack_registry()
+    document = load_request_fixture()
+    assessment = _assessment(
+        category=RecommendationCategory.OPERATIONAL_CHANGE,
+        material=False,
+        tracking_health="unhealthy",
+        optimization_eligible=False,
+    ).model_copy(update={"primary_conversion": "model-invented-event"})
+
+    normalized = registry.normalize_assessment(document, assessment)
+
+    assert normalized.material
+    assert normalized.tracking_health == document["quality"]["tracking_health"]
+    assert (
+        normalized.optimization_eligible
+        == document["quality"]["optimization_eligible"]
+    )
+    assert (
+        normalized.primary_conversion
+        == document["sections"]["goal"]["primary_conversion"]
+    )
+    registry.validate_assessment(document, normalized)
+
+
 @pytest.mark.parametrize(
     ("mutation", "message"),
     [

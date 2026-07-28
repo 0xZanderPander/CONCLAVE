@@ -44,6 +44,57 @@ class TaskPackRegistry:
         self._validate_contract_binding(task_pack, document)
         return self._evaluate_eligibility(task_pack, document)
 
+    def normalize_assessment(
+        self,
+        document: dict[str, Any],
+        assessment: Assessment,
+        *,
+        task_pack: TaskPack | None = None,
+    ) -> Assessment:
+        """Replace model-supplied deterministic facts with task-pack facts."""
+
+        task_pack = task_pack or self.get(document["task_pack_ref"])
+        normalized = assessment.model_copy(
+            update={
+                "tracking_health": document["quality"]["tracking_health"],
+                "optimization_eligible": document["quality"][
+                    "optimization_eligible"
+                ],
+                "primary_conversion": document["sections"]["goal"][
+                    "primary_conversion"
+                ],
+            }
+        )
+        return normalized.model_copy(
+            update={
+                "material": self.recommendation_materiality(
+                    document,
+                    normalized,
+                    task_pack=task_pack,
+                )
+            }
+        )
+
+    def normalize_judgment(
+        self,
+        document: dict[str, Any],
+        judgment: ReviewerCJudgment,
+        *,
+        task_pack: TaskPack | None = None,
+    ) -> ReviewerCJudgment:
+        if judgment.resolution_assessment is None:
+            return judgment
+        task_pack = task_pack or self.get(document["task_pack_ref"])
+        return judgment.model_copy(
+            update={
+                "resolution_assessment": self.normalize_assessment(
+                    document,
+                    judgment.resolution_assessment,
+                    task_pack=task_pack,
+                )
+            }
+        )
+
     def validate_assessment(
         self,
         document: dict[str, Any],

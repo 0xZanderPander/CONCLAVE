@@ -72,6 +72,12 @@ async def test_local_api_accepts_and_runs_a_fixture_review() -> None:
             assert events.json()["next_sequence"] == 5
             assert operations.status_code == 200
             assert operations.json()["queue"]["expired_leases"] == 0
+            provider_attempts = operations.json()["provider_attempts"]
+            assert provider_attempts["counts"] == {"succeeded": 1}
+            assert provider_attempts["total_tokens"] == 0
+            assert provider_attempts["total_cost_usd"] == 0.0
+            assert provider_attempts["average_latency_ms"] >= 0
+            assert provider_attempts["last_completed_at"] is not None
             assert operations.json()["stale_process_ids"] == []
     finally:
         engine.dispose()

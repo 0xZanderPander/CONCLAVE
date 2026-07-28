@@ -62,6 +62,15 @@ class QueueMetrics:
     expired_leases: int
 
 
+@dataclass(frozen=True, slots=True)
+class ProviderMetrics:
+    counts: dict[str, int]
+    total_tokens: int
+    total_cost_usd: float
+    average_latency_ms: float | None
+    last_completed_at: datetime | None
+
+
 def canonical_hash(value: dict[str, Any]) -> str:
     encoded = json.dumps(
         value,
@@ -597,6 +606,33 @@ class LedgerRepository:
                 expired_leases=expired or 0,
             )
 
+    def provider_metrics(self) -> ProviderMetrics:
+        with self._sessions() as db:
+            rows = db.execute(
+                select(
+                    ReviewerProviderAttemptRecord.status,
+                    func.count(ReviewerProviderAttemptRecord.attempt_id),
+                ).group_by(ReviewerProviderAttemptRecord.status)
+            )
+            counts = {status: count for status, count in rows}
+            aggregate = db.execute(
+                select(
+                    func.sum(ReviewerProviderAttemptRecord.total_tokens),
+                    func.sum(ReviewerProviderAttemptRecord.cost_usd),
+                    func.avg(ReviewerProviderAttemptRecord.latency_ms),
+                    func.max(ReviewerProviderAttemptRecord.completed_at),
+                )
+            ).one()
+            return ProviderMetrics(
+                counts=counts,
+                total_tokens=int(aggregate[0] or 0),
+                total_cost_usd=float(aggregate[1] or 0),
+                average_latency_ms=(
+                    float(aggregate[2]) if aggregate[2] is not None else None
+                ),
+                last_completed_at=aggregate[3],
+            )
+
     def list_plan_revisions(self) -> list[ReviewPlanRevision]:
         with self._sessions() as db:
             records = list(
@@ -904,6 +940,12 @@ class LedgerRepository:
                         "category": assessment_payload.get("category"),
                         "material": assessment_payload.get("material"),
                         "risk": assessment_payload.get("risk"),
+                        "deterministic_fields": [
+                            "material",
+                            "tracking_health",
+                            "optimization_eligible",
+                            "primary_conversion",
+                        ],
                     },
                     confidence=assessment_payload.get("confidence"),
                     correlation_id=record.session_id,

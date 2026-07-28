@@ -250,9 +250,10 @@ without changing the Conclave review protocol.
 
 ## Phase 3: Reviewer A and Baseline
 
-**Status:** implementation complete; one live-provider acceptance run remains.
-The design and limits were approved by Al on 2026-07-27. The normal test suite
-uses deterministic or mocked providers and never calls a live model.
+**Status:** complete. The design and limits were approved by Al on 2026-07-27,
+and the live reviewer-A acceptance gate passed on 2026-07-28. The normal test
+suite still uses deterministic or mocked providers and never calls a live
+model unless the dedicated opt-in gate is selected.
 
 ### Build
 
@@ -264,11 +265,13 @@ uses deterministic or mocked providers and never calls a live model.
 - [x] strict structured output, no tools, no provider storage, and no hidden
   fixture fallback
 - [x] durable per-attempt telemetry and aggregate invocation metadata
-- [ ] one live reviewer-A acceptance call in the isolated test environment
+- [x] provider-attempt counts, token use, cost, average latency, and most
+  recent completion in the operational status surface
+- [x] one live reviewer-A acceptance call in the isolated test environment
 
 ### Exit Gate
 
-- [ ] One eligible snapshot produces one valid reviewer-A assessment from the
+- [x] One eligible snapshot produces one valid reviewer-A assessment from the
   live provider.
 - [x] Mocked weak evidence produces `collect_more_data`.
 - [x] An experiment must include hypothesis, control, isolated change, success metric,
@@ -481,9 +484,10 @@ Its scope is limited to optional ad-performance review:
 
 ## Immediate Next Build
 
-1. Supply an OpenAI key to the isolated test environment without committing it.
-2. Run and audit the one-call Phase 3 reviewer-A acceptance fixture.
-3. Review and approve the reviewer-B production prompt, independence checks,
+1. Review and approve the reviewer-B production prompt, independence checks,
    and provider choice for Phase 4A.
+2. Implement reviewer B behind the same provider-neutral runtime and telemetry
+   boundary.
+3. Run one same-snapshot live A/B independence and comparison acceptance case.
 4. Keep reviewer C on fixtures until its production prompt and two-stage
    judgment behavior receive separate approval.

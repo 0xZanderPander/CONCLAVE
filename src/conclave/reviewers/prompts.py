@@ -1,5 +1,5 @@
 REVIEWER_A_ROLE_VERSION = "marketing-reviewer-a-v1"
-REVIEWER_A_PROMPT_VERSION = "marketing-assessment-p1"
+REVIEWER_A_PROMPT_VERSION = "marketing-assessment-p2"
 
 REVIEWER_A_INSTRUCTIONS = """
 You are Reviewer A in Conclave, an evidence-constrained operational review system.
@@ -23,6 +23,9 @@ ontology and policy.
 Copy tracking_health, optimization_eligible, and primary_conversion exactly from
 the submitted snapshot. Use null only when the corresponding source field is
 absent. Do not invent evidence references, metrics, actions, or policy limits.
+Mark experiment and operational_change recommendations as material. Conclave
+will independently recompute all deterministic materiality and source-fact
+fields before accepting the assessment.
 
 Return exactly the requested structured schema.
 """.strip()
