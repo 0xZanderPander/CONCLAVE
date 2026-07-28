@@ -25,6 +25,15 @@ The live Reviewer-A gate and live same-snapshot A/B gate passed on 2026-07-28.
 Using the same OpenAI model in that A/B gate proves plumbing and isolation; it
 does not prove that the panel outperforms one model.
 
+Phase 4B implements `assessment-v2` structured claims, exact snapshot-reference
+validation, one typed A/B cross-review response, Reviewer C's blind assessment
+and separate judgment, and controlled operator recovery from
+`cross_review_failed`. Historical `assessment-v1` records remain readable.
+OpenAI supports the complete approved panel contract. An Anthropic Messages
+adapter is also available behind the same provider-neutral interface for future
+cross-provider evaluation; no Anthropic live claim is made without its own key
+and test.
+
 Conclave does not depend on Marketing OS, and Marketing OS does not depend on
 Conclave.
 
@@ -32,6 +41,7 @@ Conclave.
 
 - [MVP Build Roadmap](MVP_build_roadmap.md)
 - [MVP Project Architecture](MVP_project_architecture.md)
+- [Phase 4B Contract Proposal](PHASE_4B_CONTRACT_PROPOSAL.md)
 - [Editable MVP Architecture Flowchart](MVP_architecture_flow.mmd)
 - [Domain Event Stream and Future Adapter Boundary](EVENT_STREAM.md)
 - [Documentation Audit Log](audit/CHANGELOG.md)
@@ -448,8 +458,8 @@ Completed foundation:
 10. registered `marketing-ads/v1` task-pack validation, deterministic
     eligibility and materiality checks, weighted comparison, hard triggers,
     conservative merge, and automatic panel routing
-11. explicit fixture or OpenAI runtime selection with no production fixture
-    fallback
+11. explicit fixture, OpenAI, Anthropic, or multi-provider runtime selection
+    with no production fixture fallback
 12. a stateless, tool-free OpenAI Responses adapter for blind, independently
     prompted reviewers A and B with strict structured output and
     prompt-injection boundaries
@@ -459,13 +469,22 @@ Completed foundation:
     operational status API and CLI output
 15. exact same-snapshot A/B enforcement, empty peer context in the independent
     round, slot-specific prompt approval, and a passing live comparison gate
+16. assessment-v2 structured claim provenance, legacy assessment-v1 reads,
+    structured result and event projection, and explicit cross-review failure
+17. typed A/B affirm-or-revise responses with explicit peer-claim positions
+18. separate production contracts for C's blind assessment and tie-break
+    judgment
+19. an operator-only, audited recovery operation that retries only the failed
+    cross-review invocation and preserves earlier attempts
+20. a fixture-tested Anthropic Messages adapter plus stage-specific provider
+    limits for larger bounded review contexts
 
 Next:
 
-1. design and review the bounded A/B cross-review prompts
-2. design and review Reviewer C's blind assessment and separate judgment prompt
-3. add a second provider adapter and run a cross-provider A/B evaluation before
-   making any claim about multi-model improvement
+1. finish one bounded same-provider live A/B/cross-review/C test
+2. configure a separate Anthropic key
+3. run cross-provider evaluation only after that separate provider credential is
+   configured
 
 Non-local API mode requires explicit bearer authentication and caller scopes.
 Local fixture mode remains available only in development and test.

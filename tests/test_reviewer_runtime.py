@@ -10,6 +10,7 @@ from conclave.domain.enums import (
 )
 from conclave.reviewers.runtime import (
     Assessment,
+    AssessmentClaim,
     FakeReviewerRuntime,
     ProviderCallResult,
     ProviderRegistryRuntime,
@@ -19,7 +20,21 @@ from conclave.reviewers.runtime import (
     ReviewerCJudgment,
     ReviewerProviderExhaustedError,
     UnknownReviewerProviderError,
+    assign_assessment_claim_ids,
 )
+
+
+def test_evidence_references_canonicalize_bracketed_array_indexes() -> None:
+    claim = AssessmentClaim(
+        statement="Creative B has no purchases.",
+        evidence_references=(
+            "sections.evidence.creative_breakdown[1].purchases",
+        ),
+    )
+
+    assert claim.evidence_references == (
+        "sections.evidence.creative_breakdown.1.purchases",
+    )
 
 
 def _call(provider: str = "fake") -> ReviewCall:
@@ -52,6 +67,50 @@ def test_fake_runtime_is_explicit_and_deterministic() -> None:
 
     assert runtime.review(call).output == assessment
     assert runtime.calls == [call]
+
+
+def test_assessment_v1_string_claims_remain_readable_and_round_trip() -> None:
+    assessment = Assessment.model_validate(
+        {
+            "category": "collect_more_data",
+            "summary": "Legacy assessment.",
+            "claims": ["Legacy claim text."],
+            "confidence": 0.7,
+            "evidence_quality": "weak",
+        }
+    )
+
+    assert assessment.claims == ("Legacy claim text.",)
+    assert assessment.model_dump(mode="json")["claims"] == ["Legacy claim text."]
+
+
+def test_assessment_v2_claim_ids_are_conclave_issued_and_deterministic() -> None:
+    draft = Assessment(
+        category=RecommendationCategory.COLLECT_MORE_DATA,
+        summary="Wait for more evidence.",
+        claims=(
+            AssessmentClaim(
+                claim_type="inference",
+                statement="The sample is too small.",
+                evidence_references=(
+                    "sections.evidence.metrics.primary_conversions",
+                ),
+            ),
+        ),
+        confidence=0.8,
+        evidence_quality="weak",
+    )
+
+    first = assign_assessment_claim_ids(draft, invocation_id="inv_test")
+    second = assign_assessment_claim_ids(draft, invocation_id="inv_test")
+
+    assert first == second
+    assert isinstance(first.claims[0], AssessmentClaim)
+    assert first.claims[0].claim_id is not None
+    assert first.claims[0].claim_id.startswith("clm_")
+
+    with pytest.raises(ValueError, match="assigned by Conclave"):
+        assign_assessment_claim_ids(first, invocation_id="inv_test")
 
 
 def test_fake_runtime_never_silently_falls_back() -> None:

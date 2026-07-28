@@ -7,7 +7,12 @@ from conclave.ledger.models import (
     ReviewerInvocationRecord,
     ReviewSessionRecord,
 )
-from conclave.reviewers.runtime import Assessment, ReviewerCJudgment
+from conclave.reviewers.runtime import (
+    Assessment,
+    AssessmentClaim,
+    CrossReviewResponse,
+    ReviewerCJudgment,
+)
 from conclave.task_packs.comparison import ComparisonResult, ComparisonRound
 
 _AUTO_RESOLVE_CATEGORIES = {
@@ -19,6 +24,13 @@ _AUTO_RESOLVE_CATEGORIES = {
 def _assessment(invocation: ReviewerInvocationRecord) -> Assessment:
     if invocation.status != "completed" or invocation.assessment_payload is None:
         raise ValueError(f"invocation {invocation.invocation_id!r} has no valid assessment")
+    if (
+        invocation.stage == "cross_review"
+        and invocation.schema_version == "cross-review-v1"
+    ):
+        return CrossReviewResponse.model_validate(
+            invocation.assessment_payload
+        ).assessment
     return Assessment.model_validate(invocation.assessment_payload)
 
 
@@ -26,6 +38,20 @@ def _judgment(invocation: ReviewerInvocationRecord) -> ReviewerCJudgment:
     if invocation.status != "completed" or invocation.assessment_payload is None:
         raise ValueError(f"invocation {invocation.invocation_id!r} has no valid judgment")
     return ReviewerCJudgment.model_validate(invocation.assessment_payload)
+
+
+def _public_claim(claim: str | AssessmentClaim) -> dict[str, object]:
+    if isinstance(claim, str):
+        return {
+            "statement": claim,
+            "evidence_references": [],
+            "alternative_explanations": [],
+        }
+    return {
+        "statement": claim.statement,
+        "evidence_references": list(claim.evidence_references),
+        "alternative_explanations": list(claim.alternative_explanations),
+    }
 
 
 def _find(
@@ -180,7 +206,9 @@ def build_review_result(
             "selected_slot": judgment.selected_slot,
             "confidence": judgment.confidence,
             "evidence_quality": judgment.evidence_quality,
-            "unresolved_claims": list(judgment.unresolved_claims),
+            "unresolved_claims": list(
+                judgment.unresolved_claim_ids or judgment.unresolved_claims
+            ),
         }
 
     resolution_basis = {
@@ -219,14 +247,7 @@ def build_review_result(
                 else None
             ),
         },
-        "claims": [
-            {
-                "statement": claim,
-                "evidence_references": [],
-                "alternative_explanations": [],
-            }
-            for claim in final.claims
-        ],
+        "claims": [_public_claim(claim) for claim in final.claims],
         "disagreement": {
             "level": disagreement_level,
             "summary": disagreement_summary,

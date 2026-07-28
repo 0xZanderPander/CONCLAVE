@@ -14,7 +14,12 @@ from conclave.ledger.repository import (
     canonical_hash,
 )
 from conclave.paths import contracts_root
-from conclave.reviewers.runtime import Assessment, RecommendedAction
+from conclave.reviewers.runtime import (
+    Assessment,
+    AssessmentClaim,
+    RecommendedAction,
+    assign_assessment_claim_ids,
+)
 from conclave.task_packs.comparison import compare_assessments
 from conclave.task_packs.models import ComparatorDimension, HardTrigger
 from conclave.task_packs.registry import default_task_pack_registry
@@ -85,6 +90,89 @@ def test_task_pack_normalizes_model_supplied_deterministic_facts() -> None:
         == document["sections"]["goal"]["primary_conversion"]
     )
     registry.validate_assessment(document, normalized)
+
+
+def test_assessment_v2_validates_structured_claim_snapshot_references() -> None:
+    registry = default_task_pack_registry()
+    document = load_request_fixture()
+    assessment = assign_assessment_claim_ids(
+        Assessment(
+            category=RecommendationCategory.COLLECT_MORE_DATA,
+            summary="Collect more evidence.",
+            claims=(
+                AssessmentClaim(
+                    claim_type="inference",
+                    statement="The current conversion sample is limited.",
+                    evidence_references=(
+                        "sections.evidence.metrics.primary_conversions",
+                        "quality.optimization_eligible",
+                    ),
+                    alternative_explanations=(
+                        "Performance may change with more observations.",
+                    ),
+                ),
+            ),
+            material=False,
+            risk="low",
+            confidence=0.75,
+            evidence_quality="adequate",
+            expected_goal_impact="uncertain",
+            tracking_health="healthy",
+            optimization_eligible=True,
+            primary_conversion="eligible_giveaway_entry_completed",
+        ),
+        invocation_id="inv_claim_validation",
+    )
+
+    registry.validate_assessment(
+        document,
+        assessment,
+        schema_version="assessment-v2",
+    )
+
+
+@pytest.mark.parametrize(
+    ("references", "message"),
+    [
+        ((), "has no evidence references"),
+        (("sections.evidence.metrics.not_present",), "does not exist"),
+        (("caller.auth_subject",), "unsupported root"),
+    ],
+)
+def test_assessment_v2_rejects_invalid_snapshot_references(
+    references: tuple[str, ...],
+    message: str,
+) -> None:
+    registry = default_task_pack_registry()
+    document = load_request_fixture()
+    assessment = assign_assessment_claim_ids(
+        Assessment(
+            category=RecommendationCategory.COLLECT_MORE_DATA,
+            summary="Collect more evidence.",
+            claims=(
+                AssessmentClaim(
+                    statement="Unsupported claim.",
+                    evidence_references=references,
+                ),
+            ),
+            material=False,
+            risk="low",
+            confidence=0.75,
+            evidence_quality="adequate",
+            expected_goal_impact="uncertain",
+            tracking_health="healthy",
+            optimization_eligible=True,
+            primary_conversion="eligible_giveaway_entry_completed",
+        ),
+        invocation_id=f"inv_invalid_{message}",
+    )
+
+    with pytest.raises(ContractValidationError, match=message):
+        registry.validate_assessment(
+            document,
+            assessment,
+            schema_version="assessment-v2",
+        )
 
 
 @pytest.mark.parametrize(

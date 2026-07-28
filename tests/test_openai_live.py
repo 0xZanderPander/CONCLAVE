@@ -10,10 +10,18 @@ from conclave.intake import ReviewIntakeService
 from conclave.orchestration.service import FixturePath, ReviewOrchestrator
 from conclave.reviewers.openai import OpenAIResponsesProvider
 from conclave.reviewers.prompts import (
+    REVIEWER_A_CROSS_PROMPT_VERSION,
+    REVIEWER_A_CROSS_ROLE_VERSION,
     REVIEWER_A_PROMPT_VERSION,
     REVIEWER_A_ROLE_VERSION,
+    REVIEWER_B_CROSS_PROMPT_VERSION,
+    REVIEWER_B_CROSS_ROLE_VERSION,
     REVIEWER_B_PROMPT_VERSION,
     REVIEWER_B_ROLE_VERSION,
+    REVIEWER_C_BLIND_PROMPT_VERSION,
+    REVIEWER_C_BLIND_ROLE_VERSION,
+    REVIEWER_C_JUDGE_PROMPT_VERSION,
+    REVIEWER_C_JUDGE_ROLE_VERSION,
 )
 from conclave.reviewers.runtime import (
     ProviderRegistryRuntime,
@@ -161,12 +169,108 @@ def test_live_reviewer_a_and_b_are_blind_independent_and_compared() -> None:
 
         if comparison.payload["requires_cross_review"]:
             assert failure is not None
-            assert state == ReviewState.REVIEWER_A_FAILED
+            assert state == ReviewState.CROSS_REVIEW_FAILED
             assert failure.attempts[-1].status == "permanent_failure"
             assert "not approved" in (failure.attempts[-1].error_message or "")
         else:
             assert failure is None
             assert state == ReviewState.RESULT_RETURNED
             assert repository.get_result(accepted.session_id) is not None
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.skipif(
+    not OPENAI_API_KEY,
+    reason="CONCLAVE_OPENAI_API_KEY is required for the live Phase 4B gate",
+)
+def test_live_phase4b_runs_one_bounded_full_panel() -> None:
+    assert OPENAI_API_KEY is not None
+    engine = create_test_engine()
+    repository = create_test_repository(engine)
+    try:
+        for revision in load_design_plan_revisions():
+            if revision.revision == 4:
+                slots = dict(revision.slots)
+                slots[ReviewerSlot.A] = slots[ReviewerSlot.A].model_copy(
+                    update={
+                        "provider": "openai",
+                        "model": "gpt-5.6-terra",
+                        "role_version": REVIEWER_A_ROLE_VERSION,
+                        "prompt_version": REVIEWER_A_PROMPT_VERSION,
+                        "schema_version": "assessment-v2",
+                        "cross_review_role_version": REVIEWER_A_CROSS_ROLE_VERSION,
+                        "cross_review_prompt_version": REVIEWER_A_CROSS_PROMPT_VERSION,
+                        "cross_review_schema_version": "cross-review-v1",
+                    }
+                )
+                slots[ReviewerSlot.B] = slots[ReviewerSlot.B].model_copy(
+                    update={
+                        "provider": "openai",
+                        "model": "gpt-5.6-terra",
+                        "role_version": REVIEWER_B_ROLE_VERSION,
+                        "prompt_version": REVIEWER_B_PROMPT_VERSION,
+                        "schema_version": "assessment-v2",
+                        "cross_review_role_version": REVIEWER_B_CROSS_ROLE_VERSION,
+                        "cross_review_prompt_version": REVIEWER_B_CROSS_PROMPT_VERSION,
+                        "cross_review_schema_version": "cross-review-v1",
+                    }
+                )
+                slots[ReviewerSlot.C] = slots[ReviewerSlot.C].model_copy(
+                    update={
+                        "provider": "openai",
+                        "model": "gpt-5.6-terra",
+                        "role_version": REVIEWER_C_BLIND_ROLE_VERSION,
+                        "prompt_version": REVIEWER_C_BLIND_PROMPT_VERSION,
+                        "schema_version": "assessment-v2",
+                        "judging_role_version": REVIEWER_C_JUDGE_ROLE_VERSION,
+                        "judging_prompt_version": REVIEWER_C_JUDGE_PROMPT_VERSION,
+                        "judging_schema_version": "reviewer-c-judgment-v2",
+                        "judging_provider_policy": slots[
+                            ReviewerSlot.C
+                        ].provider_policy.model_copy(
+                            update={
+                                "max_input_characters": 60_000,
+                                "max_cost_usd": 0.25,
+                            }
+                        ),
+                    }
+                )
+                revision = revision.model_copy(update={"slots": slots})
+            repository.add_plan_revision(revision)
+
+        accepted = ReviewIntakeService(repository).accept(
+            load_request_fixture("04-surviving-reviewer-conflict.json")
+        )
+        runtime = ProviderRegistryRuntime(
+            {"openai": OpenAIResponsesProvider(api_key=OPENAI_API_KEY)},
+            max_attempts=2,
+        )
+        state = ReviewOrchestrator(repository, runtime).run_fixture_path(
+            accepted.session_id,
+            FixturePath.C_TIE_BROKEN,
+            now=datetime.now(UTC),
+        )
+
+        invocations = repository.list_invocations(accepted.session_id)
+        assert state == ReviewState.RESULT_RETURNED
+        assert len(invocations) == 6
+        assert all(invocation.status == "completed" for invocation in invocations)
+        assert sum(invocation.cost_usd or 0 for invocation in invocations) <= 0.90
+        assert [
+            (invocation.reviewer_slot, invocation.stage, invocation.round)
+            for invocation in invocations
+        ] == [
+            ("A", ReviewStage.INDEPENDENT.value, 1),
+            ("B", ReviewStage.INDEPENDENT.value, 1),
+            ("A", ReviewStage.CROSS_REVIEW.value, 2),
+            ("B", ReviewStage.CROSS_REVIEW.value, 2),
+            ("C", ReviewStage.INDEPENDENT.value, 1),
+            ("C", ReviewStage.JUDGING.value, 2),
+        ]
+        result = repository.get_result(accepted.session_id)
+        assert result is not None
+        assert result.path == FixturePath.C_TIE_BROKEN.value
+        assert result.document["status"] == "caller_decision_required"
     finally:
         engine.dispose()

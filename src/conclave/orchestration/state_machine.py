@@ -39,6 +39,7 @@ _FAILURE_TRANSITIONS: dict[ReviewState, frozenset[ReviewState]] = {
     ReviewState.SNAPSHOTTED: frozenset({ReviewState.STALE_OR_INELIGIBLE_EVIDENCE}),
     ReviewState.REVIEWER_A: frozenset({ReviewState.REVIEWER_A_FAILED}),
     ReviewState.REVIEWER_B: frozenset({ReviewState.REVIEWER_B_FAILED}),
+    ReviewState.CROSS_REVIEW: frozenset({ReviewState.CROSS_REVIEW_FAILED}),
     ReviewState.REVIEWER_C_INDEPENDENT: frozenset({ReviewState.REVIEWER_C_FAILED}),
     ReviewState.REVIEWER_C_JUDGING: frozenset({ReviewState.REVIEWER_C_FAILED}),
     ReviewState.AUTO_RESOLVED: frozenset({ReviewState.RESULT_DELIVERY_FAILED}),
@@ -52,6 +53,7 @@ _TERMINAL_STATES = frozenset(
         ReviewState.STALE_OR_INELIGIBLE_EVIDENCE,
         ReviewState.REVIEWER_A_FAILED,
         ReviewState.REVIEWER_B_FAILED,
+        ReviewState.CROSS_REVIEW_FAILED,
         ReviewState.REVIEWER_C_FAILED,
         ReviewState.AWAITING_EVIDENCE,
         ReviewState.RESULT_DELIVERY_FAILED,
@@ -72,6 +74,16 @@ def allowed_targets(state: ReviewState) -> frozenset[ReviewState]:
 def validate_transition(source: ReviewState, target: ReviewState) -> None:
     if target not in allowed_targets(source):
         raise InvalidTransitionError(f"transition {source.value} -> {target.value} is not allowed")
+
+
+def validate_recovery_transition(source: ReviewState, target: ReviewState) -> None:
+    if (
+        source != ReviewState.CROSS_REVIEW_FAILED
+        or target != ReviewState.CROSS_REVIEW
+    ):
+        raise InvalidTransitionError(
+            f"recovery transition {source.value} -> {target.value} is not allowed"
+        )
 
 
 @dataclass(frozen=True, slots=True)

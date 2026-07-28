@@ -9,6 +9,10 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 
 | Date | Rev | Requested by | Applied by | Summary |
 |---|---|---|---|---|
+| 2026-07-28 | r17 | Al | Codex | Added the second provider adapter and hardened production evidence paths and stage-specific limits from bounded live testing |
+| 2026-07-28 | r16 | Al | Codex | Implemented typed A/B cross review, two-stage C production contracts, and controlled cross-review recovery |
+| 2026-07-28 | r15 | Al | Codex | Implemented assessment-v2 compatibility, validated claim provenance, and added the auditable cross_review_failed terminal state |
+| 2026-07-28 | r14 | Al | Codex | Reconciled the roadmap with implemented behavior and proposed Phase 4B structured claims, bounded cross review, two-stage C, and explicit failure handling |
 | 2026-07-28 | r13 | Al | Codex | Completed Phase 4A with a blind Reviewer-B prompt, strict same-snapshot isolation, and a passing live A/B comparison gate |
 | 2026-07-28 | r12 | Al | Codex | Completed the live Phase 3 Reviewer-A gate and made materiality and source facts deterministic rather than model-authoritative |
 | 2026-07-27 | r11 | Al | Codex | Added provider-neutral operational metrics while the live Reviewer-A credential remains pending |
@@ -22,6 +26,189 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 | 2026-07-24 | r3 | Al | Codex | Separated Marketing domain ownership from the Conclave kernel; replaced direct Meta, Telegram, policy, outcome, and learning ownership with versioned request/result/feedback contracts |
 | 2026-07-24 | r2 | Al | Conclave assistant (Cowork session) | Three-reviewer panel, cadence-based ping-pong, tolerance-triggered cross review, tie-breaker, baseline, configurable adjudicator, Hermes learning seam, domain contract, testable Phase 0 gate |
 | 2026-07-14 | r1 | Al | Al | Initial Marketing-first, read-only MVP design (baseline of these docs) |
+
+---
+
+## r17 — 2026-07-28
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** provider adapters, reviewer prompts, evidence references, plan
+policies, architecture, roadmap, tests, and audit log
+
+### What changed
+
+1. Added an Anthropic Messages adapter behind the same approved, typed reviewer
+   contracts as OpenAI. Runtime selection remains explicit and never falls
+   back silently.
+2. Added `anthropic` and `multi_provider` runtime modes. Multi-provider startup
+   requires both credentials.
+3. Tightened every Phase 4B production prompt to use canonical evidence roots
+   and never prefix paths with `snapshot`.
+4. Canonicalized bracketed numeric array references to the stored dotted form
+   while preserving strict snapshot-existence validation.
+5. Added optional cross-review and judging provider policies per slot so a
+   deployment can tune bounded stage limits without weakening other calls.
+
+### Verification
+
+- Ruff and the full local suite pass.
+- Mocked Anthropic success, telemetry, retry, and failure tests pass.
+- All four hosted PostgreSQL integration tests pass against the Supabase
+  Session Pooler.
+- Bounded OpenAI attempts progressed through A/B and cross review, then exposed
+  and hardened two real contract boundaries: provider-authored path syntax and
+  C2's larger input size. The final complete live gate remains pending.
+
+### Not changed
+
+- The A/B/C protocol, one-round cross-review limit, caller decision boundary,
+  immutable ledger, and no-execution rule.
+- No Anthropic live evaluation is claimed before a separate credential is
+  configured.
+
+---
+
+## r16 — 2026-07-28
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** stage-specific reviewer contracts, production prompts, orchestration,
+provider validation, audit reconstruction, recovery controls, architecture,
+roadmap, tests, and audit log
+
+### What changed
+
+1. A and B cross review now returns `affirm` or `revise`, an explicit position
+   on every peer claim, and one complete structured assessment.
+2. Reviewer C now has separate approved contracts for its blind assessment and
+   later judgment.
+3. C's judgment classifies all submitted claim IDs as supporting, rejected, or
+   unresolved. Selecting A or B preserves that exact final assessment.
+4. Reviewer slot plans may pin different role, prompt, and schema versions for
+   independent review, cross review, and judgment.
+5. Production provider calls reject peer content in blind rounds and require
+   the approved context for cross review and judgment.
+6. Operators may recover `cross_review_failed` only when exactly one
+   cross-review invocation failed. Recovery keeps prior assessments and
+   provider attempts, records the operator and reason, and resumes the same
+   bounded round.
+7. Attempt numbering and aggregate provider telemetry remain continuous across
+   recovery.
+
+### Verification
+
+- The local suite covers the complete structured A/B/cross-review/C path,
+  Reviewer C blindness, claim classification, exact schema identities,
+  recovery, attempt preservation, result construction, and audit replay.
+- Ruff and the complete local suite pass.
+- The hosted PostgreSQL concurrency and full-flow suite passes through the
+  Supabase Session Pooler.
+
+### Still pending
+
+- One bounded OpenAI full-conflict test.
+- A second provider adapter and later credentialed cross-provider evaluation.
+
+---
+
+## r15 — 2026-07-28
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** reviewer assessment models, task-pack validation, orchestration,
+state machine, result and event projection, design traces, Phase 4B documents,
+README, architecture, roadmap, tests, and audit log
+
+### What changed
+
+1. `assessment-v2` supports structured claims containing a type, statement,
+   exact snapshot references, and alternative explanations.
+2. Conclave assigns stable claim IDs from the invocation identity and stored
+   claim ordinal. Provider-authored claim IDs are rejected.
+3. Historical `assessment-v1` string claims remain readable and round-trip
+   unchanged.
+4. Every v2 reference must use an approved request root and resolve to an exact
+   path in the immutable snapshot.
+5. Structured claims project into `review-result/v1` and reviewer-completion
+   event evidence references without exposing internal claim IDs.
+6. Cross-review provider or contract failures now enter
+   `cross_review_failed`, preserve completed A/B work, record the failed
+   invocation and state transition, and never continue to Reviewer C.
+
+### Verification
+
+- Legacy assessment compatibility, deterministic claim IDs, valid and invalid
+  reference paths, result/event projection, legal state transitions, terminal
+  behavior, and cross-review audit continuity have dedicated tests.
+- Ruff and the complete local suite pass.
+- No database migration was required because review states and assessment
+  payloads are stored as versioned strings and JSON.
+- Supabase MCP confirms the isolated project is healthy, remains at Alembic
+  `20260727_0009`, stores session state as character data, and stores
+  assessments as JSON.
+- The four direct PostgreSQL pytest cases were attempted but could not connect
+  with the saved local credential note or the inferred pooler route. They
+  remain unverified for this revision rather than being reported as passing.
+
+### Still pending
+
+- Production A/B cross-review response models and prompts.
+- Production Reviewer C blind-assessment and judgment prompts.
+- A bounded live Phase 4B conflict test.
+- Terminal reviewer-session operator recovery.
+- A second provider adapter and cross-provider evaluation.
+
+---
+
+## r14 — 2026-07-28
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** `README.md`, `MVP_project_architecture.md`,
+`MVP_build_roadmap.md`, `PHASE_4B_CONTRACT_PROPOSAL.md`, and
+`audit/CHANGELOG.md`
+
+### Why
+
+Al asked to recenter the documentation, identify remaining issues, and prepare
+the Phase 4B contract proposal before implementation.
+
+### What changed
+
+1. The roadmap now separates the completed fixture kernel from the unapproved
+   production Phase 4B provider contracts.
+2. Existing automatic C routing, bounded cross review, material-result
+   handling, disagreement measurement, result retrieval, and provider auditing
+   are marked as implemented rather than scheduled for rebuilding.
+3. The proposal introduces `assessment-v2` structured claims with
+   Conclave-issued IDs, exact snapshot references, and alternative
+   explanations.
+4. The proposal defines one full-assessment A/B affirm-or-revise round,
+   Reviewer C's blind assessment, and Reviewer C's separate explicit judgment.
+5. The proposal identifies the missing legal failure transition from the
+   shared cross-review state and recommends `cross_review_failed`.
+6. Phase 5 is recorded as partially complete. Phase 6 is recorded as a
+   validated contract fixture without ingestion or evaluation implementation.
+7. The docs now distinguish queue retry from terminal reviewer-session
+   recovery, which is not implemented.
+
+### Decisions still required
+
+- Approve the structured claim fields and deterministic claim IDs.
+- Approve exact snapshot-path reference validation.
+- Approve the A/B cross-review response contract.
+- Approve C's two production contracts.
+- Approve `cross_review_failed`.
+- Approve an initial same-provider live Phase 4B plumbing test before adding a
+  second provider.
+
+### Not changed
+
+- No reviewer model, prompt, schema, state, or database code changed.
+- No live provider call was made.
+- The Marketing boundary and caller authority are unchanged.
+- Conclave still returns recommendations and never performs actions.
 
 ---
 

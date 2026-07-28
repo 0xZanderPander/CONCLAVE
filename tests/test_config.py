@@ -42,6 +42,15 @@ def test_production_reviewer_runtime_requires_an_explicit_provider() -> None:
     with pytest.raises(ValueError, match="requires an API key"):
         Settings(reviewer_runtime_mode="openai")
 
+    with pytest.raises(ValueError, match="Anthropic reviewer runtime"):
+        Settings(reviewer_runtime_mode="anthropic")
+
+    with pytest.raises(ValueError, match="OpenAI and Anthropic"):
+        Settings(
+            reviewer_runtime_mode="multi_provider",
+            openai_api_key="test-openai-key",
+        )
+
 
 def test_reviewer_runtime_factory_never_silently_falls_back() -> None:
     fixture = build_reviewer_runtime(Settings())
@@ -54,3 +63,15 @@ def test_reviewer_runtime_factory_never_silently_falls_back() -> None:
 
     assert isinstance(fixture, DevelopmentReviewerRuntime)
     assert isinstance(production, ProviderRegistryRuntime)
+
+
+def test_multi_provider_runtime_registers_both_explicit_adapters() -> None:
+    runtime = build_reviewer_runtime(
+        Settings(
+            reviewer_runtime_mode="multi_provider",
+            openai_api_key="test-openai-key",
+            anthropic_api_key="test-anthropic-key",
+        )
+    )
+
+    assert isinstance(runtime, ProviderRegistryRuntime)

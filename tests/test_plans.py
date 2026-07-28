@@ -3,9 +3,9 @@ from datetime import datetime
 
 import pytest
 
-from conclave.domain.enums import ReviewerSlot
+from conclave.domain.enums import ReviewerSlot, ReviewStage
 from conclave.paths import design_fixtures_root
-from conclave.plans.models import ReviewPlan, ReviewPlanRevision
+from conclave.plans.models import ProviderPolicy, ReviewPlan, ReviewPlanRevision
 from conclave.plans.scheduling import effective_revision, is_due, next_due, slots_due
 
 
@@ -69,4 +69,24 @@ def test_triggered_b_does_not_move_next_scheduled_audit() -> None:
 
     assert next_due(b_schedule, off_cadence_trigger) == datetime.fromisoformat(
         "2026-07-24T16:00:00+00:00"
+    )
+
+
+def test_provider_limits_can_be_tuned_by_review_stage() -> None:
+    schedule = _load_plan().revisions[-1].slots[ReviewerSlot.C].model_copy(
+        update={
+            "judging_provider_policy": ProviderPolicy(
+                max_input_characters=60_000,
+                max_cost_usd=0.25,
+            )
+        }
+    )
+
+    assert (
+        schedule.provider_policy_for_stage(ReviewStage.INDEPENDENT)
+        == schedule.provider_policy
+    )
+    assert (
+        schedule.provider_policy_for_stage(ReviewStage.JUDGING).max_input_characters
+        == 60_000
     )

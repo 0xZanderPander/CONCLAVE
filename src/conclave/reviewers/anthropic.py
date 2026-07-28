@@ -1,5 +1,4 @@
 import json
-from copy import deepcopy
 from typing import Any
 
 import httpx
@@ -18,62 +17,36 @@ from conclave.reviewers.runtime import (
     ReviewerBudgetExceededError,
 )
 
-_RETRYABLE_STATUS_CODES = {408, 409, 429, 500, 502, 503, 504}
-
-
-def _strict_output_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    """Adapt Pydantic JSON Schema to OpenAI's strict structured-output subset."""
-
-    document = deepcopy(schema)
-
-    def normalize(value: Any) -> Any:
-        if isinstance(value, list):
-            return [normalize(item) for item in value]
-        if not isinstance(value, dict):
-            return value
-        cleaned = {
-            key: normalize(item)
-            for key, item in value.items()
-            if key not in {"default", "examples"}
-        }
-        properties = cleaned.get("properties")
-        if isinstance(properties, dict):
-            cleaned["additionalProperties"] = False
-            cleaned["required"] = list(properties)
-        return cleaned
-
-    return normalize(document)
+_RETRYABLE_STATUS_CODES = {408, 409, 429, 500, 502, 503, 504, 529}
 
 
 def _output_text(document: dict[str, Any]) -> str:
-    chunks: list[str] = []
-    for item in document.get("output", []):
-        if not isinstance(item, dict) or item.get("type") != "message":
-            continue
-        for content in item.get("content", []):
-            if not isinstance(content, dict):
-                continue
-            if content.get("type") == "refusal":
-                raise PermanentReviewerProviderError("the provider refused the review request")
-            if content.get("type") == "output_text" and isinstance(content.get("text"), str):
-                chunks.append(content["text"])
+    chunks = [
+        item["text"]
+        for item in document.get("content", [])
+        if isinstance(item, dict)
+        and item.get("type") == "text"
+        and isinstance(item.get("text"), str)
+    ]
     if not chunks:
-        raise PermanentReviewerProviderError("the provider returned no structured output")
+        raise PermanentReviewerProviderError(
+            "the provider returned no structured output"
+        )
     return "".join(chunks)
 
 
-class OpenAIResponsesProvider:
-    """Stateless, tool-free OpenAI Responses adapter for Conclave reviewers."""
+class AnthropicMessagesProvider:
+    """Stateless, tool-free Anthropic Messages adapter for Conclave reviewers."""
 
     def __init__(
         self,
         *,
         api_key: str,
-        base_url: str = "https://api.openai.com/v1",
+        base_url: str = "https://api.anthropic.com/v1",
         client: httpx.Client | None = None,
     ) -> None:
         if not api_key:
-            raise ValueError("an OpenAI API key is required")
+            raise ValueError("an Anthropic API key is required")
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._client = client or httpx.Client()
@@ -83,10 +56,8 @@ class OpenAIResponsesProvider:
             contract = provider_contract_for(call)
             validate_provider_context(call)
         except (LookupError, ValueError) as exc:
-            raise PermanentReviewerProviderError(
-                str(exc)
-            ) from exc
-        instructions = contract.instructions
+            raise PermanentReviewerProviderError(str(exc)) from exc
+
         context = {
             "session_id": call.session_id,
             "snapshot_hash": call.snapshot_hash,
@@ -120,7 +91,7 @@ class OpenAIResponsesProvider:
             "comparison_history": list(call.comparison_history),
         }
         input_text = json.dumps(context, sort_keys=True, separators=(",", ":"))
-        total_input_characters = len(instructions) + len(input_text)
+        total_input_characters = len(contract.instructions) + len(input_text)
         policy = call.provider_policy
         if total_input_characters > policy.max_input_characters:
             raise ReviewerBudgetExceededError(
@@ -137,21 +108,13 @@ class OpenAIResponsesProvider:
 
         payload = {
             "model": call.model,
-            "instructions": instructions,
-            "input": input_text,
-            "store": False,
-            "tools": [],
-            "max_output_tokens": policy.max_output_tokens,
-            "reasoning": {"effort": policy.reasoning_effort},
-            "text": {
+            "system": contract.instructions,
+            "messages": [{"role": "user", "content": input_text}],
+            "max_tokens": policy.max_output_tokens,
+            "output_config": {
                 "format": {
                     "type": "json_schema",
-                    "name": contract.format_name,
-                    "description": "A validated Conclave reviewer output.",
-                    "strict": True,
-                    "schema": _strict_output_schema(
-                        contract.output_model.model_json_schema()
-                    ),
+                    "schema": contract.output_model.model_json_schema(),
                 }
             },
         }
@@ -161,11 +124,12 @@ class OpenAIResponsesProvider:
         )
         try:
             response = self._client.post(
-                f"{self._base_url}/responses",
+                f"{self._base_url}/messages",
                 headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                    "X-Client-Request-Id": client_request_id,
+                    "x-api-key": self._api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                    "x-client-request-id": client_request_id,
                 },
                 json=payload,
                 timeout=policy.timeout_seconds,
@@ -175,7 +139,7 @@ class OpenAIResponsesProvider:
                 "the provider request failed before a response was received"
             ) from exc
 
-        provider_request_id = response.headers.get("x-request-id")
+        provider_request_id = response.headers.get("request-id")
         if response.status_code >= 400:
             error_type = (
                 RetryableReviewerProviderError
@@ -193,16 +157,16 @@ class OpenAIResponsesProvider:
                 "the provider returned an unreadable response",
                 provider_request_id=provider_request_id,
             ) from exc
-        if not isinstance(document, dict):
+        if not isinstance(document, dict) or document.get("type") != "message":
             raise PermanentReviewerProviderError(
                 "the provider returned an invalid response envelope",
                 provider_request_id=provider_request_id,
             )
         response_id = document.get("id")
-        status = document.get("status")
-        if status != "completed":
+        stop_reason = document.get("stop_reason")
+        if stop_reason != "end_turn":
             raise PermanentReviewerProviderError(
-                f"the provider response ended with status {status!r}",
+                f"the provider response ended with stop reason {stop_reason!r}",
                 provider_request_id=provider_request_id,
                 provider_response_id=response_id if isinstance(response_id, str) else None,
             )
@@ -217,13 +181,12 @@ class OpenAIResponsesProvider:
 
         usage_document = document.get("usage")
         usage_document = usage_document if isinstance(usage_document, dict) else {}
-        input_details = usage_document.get("input_tokens_details")
-        input_details = input_details if isinstance(input_details, dict) else {}
-        output_details = usage_document.get("output_tokens_details")
-        output_details = output_details if isinstance(output_details, dict) else {}
         input_tokens = int(usage_document.get("input_tokens") or 0)
+        cached_input_tokens = int(
+            usage_document.get("cache_read_input_tokens") or 0
+        )
         output_tokens = int(usage_document.get("output_tokens") or 0)
-        total_tokens = int(usage_document.get("total_tokens") or input_tokens + output_tokens)
+        total_tokens = input_tokens + output_tokens
         cost_usd = (
             input_tokens * policy.input_cost_per_million_usd
             + output_tokens * policy.output_cost_per_million_usd
@@ -231,13 +194,15 @@ class OpenAIResponsesProvider:
         return ProviderCallResult(
             output=output,
             provider_request_id=provider_request_id,
-            provider_response_id=response_id if isinstance(response_id, str) else None,
-            finish_status=status if isinstance(status, str) else None,
+            provider_response_id=(
+                response_id if isinstance(response_id, str) else None
+            ),
+            finish_status=stop_reason,
             usage=ProviderUsage(
                 input_tokens=input_tokens,
-                cached_input_tokens=int(input_details.get("cached_tokens") or 0),
+                cached_input_tokens=cached_input_tokens,
                 output_tokens=output_tokens,
-                reasoning_tokens=int(output_details.get("reasoning_tokens") or 0),
+                reasoning_tokens=0,
                 total_tokens=total_tokens,
                 cost_usd=cost_usd,
                 pricing_version=policy.pricing_version,

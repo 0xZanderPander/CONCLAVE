@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from conclave.domain.enums import ReviewerSlot, ReviewerType
+from conclave.domain.enums import ReviewerSlot, ReviewerType, ReviewStage
 
 
 class ProviderPolicy(BaseModel):
@@ -32,7 +32,15 @@ class SlotSchedule(BaseModel):
     role_version: str = "role-v1"
     prompt_version: str = "prompt-v1"
     schema_version: str = "assessment-v1"
+    cross_review_role_version: str | None = None
+    cross_review_prompt_version: str | None = None
+    cross_review_schema_version: str | None = None
+    judging_role_version: str | None = None
+    judging_prompt_version: str | None = None
+    judging_schema_version: str | None = None
     provider_policy: ProviderPolicy = Field(default_factory=ProviderPolicy)
+    cross_review_provider_policy: ProviderPolicy | None = None
+    judging_provider_policy: ProviderPolicy | None = None
 
     @model_validator(mode="after")
     def validate_schedule(self) -> "SlotSchedule":
@@ -48,6 +56,28 @@ class SlotSchedule(BaseModel):
         if self.anchor_at.tzinfo is None:
             raise ValueError("anchor_at must be timezone-aware")
         return self
+
+    def contract_for_stage(self, stage: ReviewStage) -> tuple[str, str, str]:
+        if stage == ReviewStage.CROSS_REVIEW:
+            return (
+                self.cross_review_role_version or self.role_version,
+                self.cross_review_prompt_version or self.prompt_version,
+                self.cross_review_schema_version or self.schema_version,
+            )
+        if stage == ReviewStage.JUDGING:
+            return (
+                self.judging_role_version or self.role_version,
+                self.judging_prompt_version or self.prompt_version,
+                self.judging_schema_version or self.schema_version,
+            )
+        return self.role_version, self.prompt_version, self.schema_version
+
+    def provider_policy_for_stage(self, stage: ReviewStage) -> ProviderPolicy:
+        if stage == ReviewStage.CROSS_REVIEW:
+            return self.cross_review_provider_policy or self.provider_policy
+        if stage == ReviewStage.JUDGING:
+            return self.judging_provider_policy or self.provider_policy
+        return self.provider_policy
 
 
 class PanelExpansion(BaseModel):

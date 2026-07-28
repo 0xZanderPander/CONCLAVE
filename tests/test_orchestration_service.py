@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from conclave.domain.enums import ReviewerSlot, ReviewStage, ReviewState
+from conclave.events.models import DomainEventType
 from conclave.fixtures import load_design_plan_revisions, load_request_fixture
 from conclave.intake import ReviewIntakeService
 from conclave.ledger.models import ReviewerInvocationRecord
@@ -14,6 +15,8 @@ from conclave.reviewers.development import (
     DevelopmentReviewerRuntime,
 )
 from conclave.reviewers.runtime import (
+    Assessment,
+    AssessmentClaim,
     FakeReviewerRuntime,
     ProviderCallResult,
     ProviderRegistryRuntime,
@@ -88,6 +91,91 @@ def test_reviewer_failure_enters_explicit_failure_state() -> None:
         session = repository.get_session(accepted.session_id)
         assert session is not None
         assert session.current_state == ReviewState.REVIEWER_A_FAILED.value
+    finally:
+        engine.dispose()
+
+
+def test_assessment_v2_claims_are_identified_validated_and_projected() -> None:
+    engine = create_test_engine()
+    repository = create_test_repository(engine)
+    try:
+        for revision in load_design_plan_revisions():
+            if revision.revision == 4:
+                slots = dict(revision.slots)
+                slots[ReviewerSlot.A] = slots[ReviewerSlot.A].model_copy(
+                    update={"schema_version": "assessment-v2"}
+                )
+                revision = revision.model_copy(update={"slots": slots})
+            repository.add_plan_revision(revision)
+        accepted = ReviewIntakeService(repository).accept(load_request_fixture())
+        assessment = Assessment(
+            category="collect_more_data",
+            summary="Collect more observations.",
+            claims=(
+                AssessmentClaim(
+                    claim_type="inference",
+                    statement="The current conversion sample is limited.",
+                    evidence_references=(
+                        "sections.evidence.metrics.primary_conversions",
+                    ),
+                    alternative_explanations=(
+                        "The observed rate may change with a larger sample.",
+                    ),
+                ),
+            ),
+            material=False,
+            risk="low",
+            confidence=0.75,
+            evidence_quality="adequate",
+            expected_goal_impact="uncertain",
+            tracking_health="healthy",
+            optimization_eligible=True,
+            primary_conversion="eligible_giveaway_entry_completed",
+        )
+        orchestrator = ReviewOrchestrator(
+            repository,
+            FakeReviewerRuntime(
+                {(ReviewerSlot.A, ReviewStage.INDEPENDENT, 1): assessment}
+            ),
+        )
+
+        state = orchestrator.run_fixture_path(
+            accepted.session_id,
+            FixturePath.A_ONLY,
+            now=datetime.now(UTC),
+        )
+        invocation = repository.list_invocations(accepted.session_id)[0]
+        result = repository.get_result(accepted.session_id)
+
+        assert state == ReviewState.RESULT_RETURNED
+        assert invocation.schema_version == "assessment-v2"
+        assert invocation.assessment_payload is not None
+        stored_claim = invocation.assessment_payload["claims"][0]
+        assert stored_claim["claim_id"].startswith("clm_")
+        assert result is not None
+        assert result.document["claims"] == [
+            {
+                "statement": "The current conversion sample is limited.",
+                "evidence_references": [
+                    "sections.evidence.metrics.primary_conversions"
+                ],
+                "alternative_explanations": [
+                    "The observed rate may change with a larger sample."
+                ],
+            }
+        ]
+        completed_event = next(
+            event
+            for event in repository.list_events(accepted.session_id)
+            if event.event_type == DomainEventType.REVIEWER_INVOCATION_COMPLETED
+        )
+        assert completed_event.evidence_refs == (
+            "sections.evidence.metrics.primary_conversions",
+        )
+        assert completed_event.payload["assessment_schema_version"] == (
+            "assessment-v2"
+        )
+        assert completed_event.payload["claim_count"] == 1
     finally:
         engine.dispose()
 

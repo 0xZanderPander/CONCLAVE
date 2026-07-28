@@ -6,6 +6,7 @@ DEFAULT_ENVIRONMENT = "development"
 DEFAULT_DATABASE_URL = "postgresql+psycopg://conclave:conclave@localhost:5432/conclave"
 DEFAULT_LOG_LEVEL = "INFO"
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1"
 
 
 def _integer(values: Mapping[str, str], name: str, default: int) -> int:
@@ -35,6 +36,8 @@ class Settings:
     reviewer_runtime_mode: str = "fixture"
     openai_api_key: str | None = field(default=None, repr=False)
     openai_base_url: str = DEFAULT_OPENAI_BASE_URL
+    anthropic_api_key: str | None = field(default=None, repr=False)
+    anthropic_base_url: str = DEFAULT_ANTHROPIC_BASE_URL
 
     def __post_init__(self) -> None:
         if self.caller_auth_mode not in {"local_fixture", "static_bearer"}:
@@ -50,7 +53,12 @@ class Settings:
             raise ValueError(
                 "static bearer authentication requires caller credentials"
             )
-        if self.reviewer_runtime_mode not in {"fixture", "openai"}:
+        if self.reviewer_runtime_mode not in {
+            "fixture",
+            "openai",
+            "anthropic",
+            "multi_provider",
+        }:
             raise ValueError("CONCLAVE_REVIEWER_RUNTIME_MODE is invalid")
         if (
             self.environment not in {"development", "test"}
@@ -61,6 +69,14 @@ class Settings:
             )
         if self.reviewer_runtime_mode == "openai" and not self.openai_api_key:
             raise ValueError("the OpenAI reviewer runtime requires an API key")
+        if self.reviewer_runtime_mode == "anthropic" and not self.anthropic_api_key:
+            raise ValueError("the Anthropic reviewer runtime requires an API key")
+        if self.reviewer_runtime_mode == "multi_provider" and (
+            not self.openai_api_key or not self.anthropic_api_key
+        ):
+            raise ValueError(
+                "the multi-provider reviewer runtime requires OpenAI and Anthropic API keys"
+            )
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str] | None = None) -> "Settings":
@@ -98,6 +114,11 @@ class Settings:
             openai_base_url=values.get(
                 "CONCLAVE_OPENAI_BASE_URL",
                 DEFAULT_OPENAI_BASE_URL,
+            ),
+            anthropic_api_key=values.get("CONCLAVE_ANTHROPIC_API_KEY"),
+            anthropic_base_url=values.get(
+                "CONCLAVE_ANTHROPIC_BASE_URL",
+                DEFAULT_ANTHROPIC_BASE_URL,
             ),
         )
         return settings

@@ -21,6 +21,7 @@ from conclave.intake import ReviewIntakeService
 from conclave.ledger.repository import (
     LedgerConflictError,
     LedgerRepository,
+    ReviewRecoveryError,
     WorkItemClaimError,
     create_schema,
 )
@@ -50,6 +51,12 @@ class RetryWorkRequest(BaseModel):
 
 
 class CancelWorkRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str
+
+
+class RecoverCrossReviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     reason: str
@@ -381,6 +388,31 @@ def create_app(
         except WorkItemClaimError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"work_item_id": item.work_item_id, "status": item.status}
+
+    @app.post("/operations/reviews/{session_id}/recover-cross-review")
+    def recover_cross_review(
+        session_id: str,
+        request: RecoverCrossReviewRequest,
+        principal: Annotated[
+            CallerPrincipal,
+            Depends(operations_dependency),
+        ],
+    ) -> dict[str, Any]:
+        try:
+            session = repository.recover_cross_review(
+                session_id=session_id,
+                operator_id=principal.caller_id or "local-operator",
+                reason=request.reason,
+                recovered_at=datetime.now(UTC),
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (ValueError, ReviewRecoveryError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "review_session_id": session.session_id,
+            "state": session.current_state,
+        }
 
     return app
 

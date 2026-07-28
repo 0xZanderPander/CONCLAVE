@@ -320,63 +320,100 @@ lever, not a requirement baked into the Conclave kernel.
 
 ## Phase 4B: Cross Review and Tie-Breaker
 
+**Status:** implementation and hosted PostgreSQL verification complete; the
+final live release gate remains.
+Automatic routing, typed one-round cross review, blind C assessment, explicit C
+judgment, deterministic result selection, caller-decision handling, and
+controlled failed-cross-review recovery are covered by local tests.
+
+`assessment-v2`, deterministic claim IDs, exact snapshot-reference validation,
+legacy `assessment-v1` reads, structured result and event projection, and the
+legal `cross_review_failed` path are implemented. The approved contracts are
+recorded in [the Phase 4B contract](PHASE_4B_CONTRACT_PROPOSAL.md).
+
 ### Build
 
-- one bounded justify-or-revise exchange
-- preservation of both independent and cross-review rounds
-- reviewer C blind assessment for surviving disagreement
-- reviewer C judging stage with `select_a`, `select_b`, `synthesize`,
+- [x] deterministic one-round cross-review route and fixture execution
+- [x] preservation of both independent and cross-review rounds
+- [x] reviewer C blind assessment for surviving disagreement in fixtures
+- [x] reviewer C judging contract with `select_a`, `select_b`, `synthesize`,
   `insufficient_evidence`, and `escalate`
-- reviewer adjudication
-- auto-resolve only for plan-enabled, non-material, low-risk `observe` or
+- [x] reviewer adjudication and exact selected-assessment preservation
+- [x] auto-resolve only for plan-enabled, non-material, low-risk `observe` or
   `collect_more_data` results with no operational action, hard conflict, or C
   invocation
-- caller-decision-required result for material or unresolved cases
+- [x] caller-decision-required result for material, C, or unresolved cases
+- [x] `assessment-v2` structured claims and snapshot-reference validation
+- [x] production A/B cross-review response contract and prompts
+- [x] production C blind-assessment and judgment prompts
+- [x] legal, auditable cross-review provider-failure state
+- [x] controlled operator recovery that preserves provider-attempt history
+- [x] second provider adapter with deterministic structured-output tests
+- [x] stage-specific provider limits for the larger C2 judgment context
+- [ ] opt-in live Phase 4B acceptance case
 
 ### Exit Gate
 
-- Conflict fixtures traverse cross review and reviewer C as expected.
-- C stores its independent assessment before receiving A/B content.
-- A synthesized C result must validate against the task-pack ontology.
-- Agreement fixtures auto-resolve without a caller decision.
-- Material results are marked caller-decision-required rather than decided by a
+- [x] Conflict fixtures traverse cross review and reviewer C as expected.
+- [x] C stores its independent assessment before receiving A/B content.
+- [x] A synthesized C result must validate against the task-pack ontology.
+- [x] Agreement fixtures auto-resolve without a caller decision.
+- [x] Material results are marked caller-decision-required rather than decided by a
   model.
-- Cross review cannot become an unbounded debate.
+- [x] Cross review cannot become an unbounded debate.
+- [x] Every assessment-v2 claim references real fields in the immutable snapshot.
+- [x] A cross-review provider failure preserves prior work and enters a valid
+  terminal state.
+- [x] An operator can reopen only the failed cross-review invocation without
+  erasing prior attempts or starting another discussion round.
+- [ ] Production provider output passes the complete A/B/cross-review/C path.
 
 ## Phase 5: Structured Result Return
 
+**Status:** partially complete. `review-result/v1`, immutable result storage,
+snapshot linkage, automatic result construction, local API retrieval, and
+idempotent result persistence exist. Transport callback delivery and its retry
+policy remain deferred; polling is the current MVP return path.
+
 ### Build
 
-- `review-result/v1`
-- local result retrieval, with future callback or polling support left behind
+- [x] `review-result/v1`
+- [x] local result retrieval through polling, with a future callback left behind
   the draft boundary
-- result delivery retry and deduplication
-- evidence version and snapshot hash linkage
-- result categories for observation, more data, experiment, operational change,
+- [ ] callback delivery retry and deduplication
+- [x] evidence version and snapshot hash linkage
+- [x] result categories for observation, more data, experiment, operational change,
   freeze, and tracking/data problems
-- result status for caller decision required
-- explicit confidence, evidence quality, missing evidence, risk, and
+- [x] result status for caller decision required
+- [x] explicit confidence, evidence quality, missing evidence, risk, and
   disagreement fields
 
 ### Exit Gate
 
-- The test harness can retrieve one complete, validated result.
-- Delivery retries cannot create duplicate recommendations.
-- The result contains no instruction that bypasses caller policy.
-- Conclave sends no Telegram approval and performs no platform write.
+- [x] The test harness can retrieve one complete, validated result.
+- [x] Immutable result persistence cannot create duplicate recommendations.
+- [x] The result contains no instruction that bypasses caller policy.
+- [x] Conclave sends no Telegram approval and performs no platform write.
+- [ ] Optional callback delivery, if added, retries without duplicating a
+  result.
 
 ## Phase 6: External Feedback and Reviewer Evaluation
 
+**Status:** contract fixture only. The feedback schema validates, but feedback
+ingestion, durable linkage, and reviewer-evaluation calculations are not yet
+implemented.
+
 ### Build
 
-- `review-feedback/v1`
-- simulated decision, action, and outcome references
-- beneficial, harmful, no-effect, mixed, and inconclusive reviewer-result
+- [x] validated `review-feedback/v1` schema and fixture
+- [ ] feedback API and durable session linkage
+- [ ] simulated decision, action, and outcome references in the ledger
+- [ ] beneficial, harmful, no-effect, mixed, and inconclusive reviewer-result
   classifications
-- confounder and evidence-quality fields
-- reviewer-evaluation candidates
-- single-reviewer versus panel comparison
-- panel-delta, caller-preference, issue-catch, cross-review-resolution,
+- [ ] confounder and evidence-quality persistence
+- [ ] reviewer-evaluation candidates
+- [ ] single-reviewer versus panel comparison
+- [ ] panel-delta, caller-preference, issue-catch, cross-review-resolution,
   reviewer-C, override, latency, and cost indicators
 
 ### Exit Gate
@@ -439,23 +476,23 @@ lever, not a requirement baked into the Conclave kernel.
 - [x] Evidence quality is separate from reviewer confidence.
 - [x] Reviewer A and B fixture assessments are independently formed.
 - [x] Whenever B or C joins, all reviewers use the exact same snapshot.
-- [ ] B joins only on its cadence or an approved expansion trigger.
+- [x] B joins only on its cadence or an approved expansion trigger.
 - [x] Triggered B schedule calculation does not move its next scheduled audit.
 - [x] Reviewer A's baseline is recorded.
-- [ ] Claims reference evidence and alternative explanations.
-- [ ] Disagreement is measured and explained.
+- [x] Assessment-v2 claims reference validated evidence and alternative explanations.
+- [x] Disagreement is measured and explained.
 - [x] Ad-performance fixture weights total `1.0`, tolerance is explicit, and
       hard triggers bypass weighted agreement.
 - [x] Cross-review fixture execution is one bounded round.
 - [x] Reviewer C fixture execution assesses blindly before judging A and B.
-- [ ] Runtime routing invokes C only after measured disagreement survives cross
+- [x] Runtime routing invokes C only after measured disagreement survives cross
       review.
-- [ ] Material results return `caller_decision_required`.
+- [x] Material results return `caller_decision_required`.
 - [x] Conclave has no platform credential or execution path.
 - [x] Conclave has no authoritative Marketing approval surface.
 - [ ] Feedback is linked without becoming trusted domain truth.
 - [ ] Panel-value metrics are labeled directional rather than causal proof.
-- [ ] Provider, prompt, schema, token, latency, and cost data are auditable.
+- [x] Provider, prompt, schema, token, latency, and cost data are auditable.
 - [x] Queue failures retry without duplicating completed work.
 - [x] Completed fixture results and their decision ledgers validate on
       PostgreSQL.
@@ -497,10 +534,8 @@ Its scope is limited to optional ad-performance review:
 
 ## Immediate Next Build
 
-1. Review and approve separate cross-review prompts for A and B.
-2. Implement one bounded cross-review round without weakening the stored
-   independent baseline.
-3. Review and approve Reviewer C's blind assessment and separate judgment
-   prompt before enabling C on a live provider.
-4. Add a second provider adapter and use it in an A/B evaluation before
-   treating provider diversity as validated.
+1. Complete one bounded same-provider live conflict case; prior bounded attempts
+   found and hardened evidence-path and C2 input-limit boundaries.
+2. Configure a separate Anthropic key.
+3. Run cross-provider fixtures after that credential is configured before
+   claiming perspective-diversity benefit.

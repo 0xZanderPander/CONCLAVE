@@ -40,6 +40,7 @@ class ReviewState(StrEnum):
     STALE_OR_INELIGIBLE_EVIDENCE = "stale_or_ineligible_evidence"
     REVIEWER_A_FAILED = "reviewer_a_failed"
     REVIEWER_B_FAILED = "reviewer_b_failed"
+    CROSS_REVIEW_FAILED = "cross_review_failed"
     REVIEWER_C_FAILED = "reviewer_c_failed"
     AWAITING_EVIDENCE = "awaiting_evidence"
     RESULT_DELIVERY_FAILED = "result_delivery_failed"

@@ -15,11 +15,29 @@ from conclave.events.models import DomainEventType
 from conclave.fixtures import load_design_plan_revisions, load_request_fixture
 from conclave.intake import ReviewIntakeService
 from conclave.orchestration.service import ReviewOrchestrator
+from conclave.reviewers.prompts import (
+    REVIEWER_A_CROSS_PROMPT_VERSION,
+    REVIEWER_A_CROSS_ROLE_VERSION,
+    REVIEWER_B_CROSS_PROMPT_VERSION,
+    REVIEWER_B_CROSS_ROLE_VERSION,
+    REVIEWER_C_BLIND_PROMPT_VERSION,
+    REVIEWER_C_BLIND_ROLE_VERSION,
+    REVIEWER_C_JUDGE_PROMPT_VERSION,
+    REVIEWER_C_JUDGE_ROLE_VERSION,
+)
 from conclave.reviewers.runtime import (
     Assessment,
+    AssessmentClaim,
+    CrossReviewResponse,
     FakeReviewerRuntime,
+    PeerClaimReview,
+    PermanentReviewerProviderError,
+    ProviderRegistryRuntime,
     RecommendedAction,
+    ReviewCall,
     ReviewerCJudgment,
+    ReviewerExecution,
+    ReviewerProviderExhaustedError,
 )
 from tests.helpers import create_test_engine, create_test_repository
 
@@ -81,6 +99,133 @@ def _select_a_judgment() -> ReviewerCJudgment:
         confidence=0.8,
         evidence_quality="adequate",
     )
+
+
+def _structured(
+    assessment: Assessment,
+    *,
+    statement: str,
+) -> Assessment:
+    return assessment.model_copy(
+        update={
+            "claims": (
+                AssessmentClaim(
+                    statement=statement,
+                    evidence_references=(
+                        "sections.evidence.metrics.primary_conversions",
+                        "quality.optimization_eligible",
+                    ),
+                ),
+            )
+        }
+    )
+
+
+def _phase4b_revision(revision):
+    slots = dict(revision.slots)
+    slots[ReviewerSlot.A] = slots[ReviewerSlot.A].model_copy(
+        update={
+            "schema_version": "assessment-v2",
+            "cross_review_role_version": REVIEWER_A_CROSS_ROLE_VERSION,
+            "cross_review_prompt_version": REVIEWER_A_CROSS_PROMPT_VERSION,
+            "cross_review_schema_version": "cross-review-v1",
+        }
+    )
+    slots[ReviewerSlot.B] = slots[ReviewerSlot.B].model_copy(
+        update={
+            "schema_version": "assessment-v2",
+            "cross_review_role_version": REVIEWER_B_CROSS_ROLE_VERSION,
+            "cross_review_prompt_version": REVIEWER_B_CROSS_PROMPT_VERSION,
+            "cross_review_schema_version": "cross-review-v1",
+        }
+    )
+    slots[ReviewerSlot.C] = slots[ReviewerSlot.C].model_copy(
+        update={
+            "role_version": REVIEWER_C_BLIND_ROLE_VERSION,
+            "prompt_version": REVIEWER_C_BLIND_PROMPT_VERSION,
+            "schema_version": "assessment-v2",
+            "judging_role_version": REVIEWER_C_JUDGE_ROLE_VERSION,
+            "judging_prompt_version": REVIEWER_C_JUDGE_PROMPT_VERSION,
+            "judging_schema_version": "reviewer-c-judgment-v2",
+        }
+    )
+    return revision.model_copy(update={"slots": slots})
+
+
+class Phase4BContractRuntime:
+    def __init__(self) -> None:
+        self.calls: list[ReviewCall] = []
+
+    def review(self, call: ReviewCall) -> ReviewerExecution:
+        self.calls.append(call)
+        if call.stage == ReviewStage.JUDGING:
+            assert call.own_assessment is not None
+            supporting = tuple(
+                claim.claim_id
+                for response in call.cross_review_responses
+                if response.slot == ReviewerSlot.B
+                for claim in response.response.assessment.claims
+                if isinstance(claim, AssessmentClaim) and claim.claim_id
+            )
+            rejected = tuple(
+                claim.claim_id
+                for response in call.cross_review_responses
+                if response.slot == ReviewerSlot.A
+                for claim in response.response.assessment.claims
+                if isinstance(claim, AssessmentClaim) and claim.claim_id
+            )
+            unresolved = tuple(
+                claim.claim_id
+                for claim in call.own_assessment.assessment.claims
+                if isinstance(claim, AssessmentClaim) and claim.claim_id
+            )
+            return ReviewerExecution(
+                output=ReviewerCJudgment(
+                    verdict="select_b",
+                    selected_slot="B",
+                    summary="Reviewer B is better supported.",
+                    confidence=0.76,
+                    evidence_quality="adequate",
+                    supporting_claim_ids=supporting,
+                    rejected_claim_ids=rejected,
+                    unresolved_claim_ids=unresolved,
+                )
+            )
+        if call.slot == ReviewerSlot.A:
+            assessment = _structured(
+                _pause(summary="A supports pausing the weaker creative."),
+                statement="Creative B has a higher submitted CPA.",
+            )
+        else:
+            assessment = _structured(
+                _collect(summary=f"{call.slot.value} supports collecting more data."),
+                statement="The submitted evidence supports continued observation.",
+            )
+        if call.stage == ReviewStage.CROSS_REVIEW:
+            peer_claims = [
+                claim
+                for peer in call.peer_assessments
+                for claim in peer.assessment.claims
+                if isinstance(claim, AssessmentClaim) and claim.claim_id
+            ]
+            return ReviewerExecution(
+                output=CrossReviewResponse(
+                    disposition="affirm",
+                    peer_claim_reviews=tuple(
+                        PeerClaimReview(
+                            claim_id=claim.claim_id,
+                            position="challenge",
+                            summary="The peer claim does not change this recommendation.",
+                            evidence_references=(
+                                "sections.evidence.metrics.primary_conversions",
+                            ),
+                        )
+                        for claim in peer_claims
+                    ),
+                    assessment=assessment,
+                )
+            )
+        return ReviewerExecution(output=assessment)
 
 
 def _run(
@@ -198,6 +343,56 @@ def test_automatic_route_stops_after_cross_review_when_revisions_converge() -> N
         engine.dispose()
 
 
+def test_cross_review_provider_failure_is_terminal_and_auditable() -> None:
+    engine = create_test_engine()
+    repository = create_test_repository(engine)
+    try:
+        for revision in load_design_plan_revisions():
+            repository.add_plan_revision(revision)
+        accepted = ReviewIntakeService(repository).accept(
+            load_request_fixture("04-surviving-reviewer-conflict.json")
+        )
+        runtime = FakeReviewerRuntime(
+            {
+                (ReviewerSlot.A, ReviewStage.INDEPENDENT, 1): _pause(),
+                (ReviewerSlot.B, ReviewStage.INDEPENDENT, 1): _collect(),
+            }
+        )
+
+        with pytest.raises(LookupError, match="no fake reviewer response"):
+            ReviewOrchestrator(repository, runtime).run(
+                accepted.session_id,
+                now=datetime.now(UTC),
+            )
+
+        session = repository.get_session(accepted.session_id)
+        invocations = repository.list_invocations(accepted.session_id)
+        events = repository.audit_events("review_session", accepted.session_id)
+
+        assert session is not None
+        assert session.current_state == ReviewState.CROSS_REVIEW_FAILED.value
+        assert [(item.reviewer_slot, item.stage, item.status) for item in invocations] == [
+            ("A", ReviewStage.INDEPENDENT.value, "completed"),
+            ("B", ReviewStage.INDEPENDENT.value, "completed"),
+            ("A", ReviewStage.CROSS_REVIEW.value, "failed"),
+        ]
+        assert not any(item.reviewer_slot == "C" for item in invocations)
+        assert [event.event_index for event in events] == list(
+            range(1, len(events) + 1)
+        )
+        transition = next(
+            event
+            for event in reversed(events)
+            if event.event_type == DomainEventType.STATE_TRANSITIONED.value
+        )
+        assert transition.event_payload == {
+            "source": ReviewState.CROSS_REVIEW.value,
+            "target": ReviewState.CROSS_REVIEW_FAILED.value,
+        }
+    finally:
+        engine.dispose()
+
+
 def test_automatic_route_invokes_c_only_when_cross_review_still_disagrees() -> None:
     document = load_request_fixture("04-surviving-reviewer-conflict.json")
     engine, repository, accepted, runtime, _state, result = _run(
@@ -223,6 +418,161 @@ def test_automatic_route_invokes_c_only_when_cross_review_still_disagrees() -> N
         assert result.document["panel_metadata"]["tie_breaker"]["selected_slot"] == "B"
         assert len(runtime.calls) == 6
         assert AuditVerifier(repository).verify_session(accepted.session_id).path == "c_tie_broken"
+    finally:
+        engine.dispose()
+
+
+def test_phase4b_contracts_preserve_blind_c1_and_structured_c2_judgment() -> None:
+    engine = create_test_engine()
+    repository = create_test_repository(engine)
+    try:
+        for revision in load_design_plan_revisions():
+            repository.add_plan_revision(_phase4b_revision(revision))
+        accepted = ReviewIntakeService(repository).accept(
+            load_request_fixture("04-surviving-reviewer-conflict.json")
+        )
+        runtime = Phase4BContractRuntime()
+
+        state = ReviewOrchestrator(repository, runtime).run(
+            accepted.session_id,
+            now=datetime.now(UTC),
+        )
+
+        assert state == ReviewState.RESULT_RETURNED
+        assert len(runtime.calls) == 6
+        cross_calls = [
+            call for call in runtime.calls if call.stage == ReviewStage.CROSS_REVIEW
+        ]
+        assert len(cross_calls) == 2
+        assert all(call.own_assessment is not None for call in cross_calls)
+        assert all(len(call.peer_assessments) == 1 for call in cross_calls)
+        assert all(len(call.comparison_history) == 1 for call in cross_calls)
+        c1 = runtime.calls[4]
+        assert c1.slot == ReviewerSlot.C
+        assert c1.stage == ReviewStage.INDEPENDENT
+        assert c1.own_assessment is None
+        assert c1.peer_assessments == ()
+        assert c1.cross_review_responses == ()
+        assert c1.comparison_history == ()
+        c2 = runtime.calls[5]
+        assert c2.stage == ReviewStage.JUDGING
+        assert c2.own_assessment is not None
+        assert {item.slot for item in c2.cross_review_responses} == {
+            ReviewerSlot.A,
+            ReviewerSlot.B,
+        }
+        assert len(c2.comparison_history) == 2
+
+        invocations = repository.list_invocations(accepted.session_id)
+        cross_records = [
+            item for item in invocations if item.stage == ReviewStage.CROSS_REVIEW.value
+        ]
+        assert all(item.schema_version == "cross-review-v1" for item in cross_records)
+        assert all(
+            item.assessment_payload
+            and item.assessment_payload["disposition"] == "affirm"
+            and item.assessment_payload["peer_claim_reviews"]
+            for item in cross_records
+        )
+        judgment = next(
+            item
+            for item in invocations
+            if item.stage == ReviewStage.JUDGING.value
+        )
+        assert judgment.schema_version == "reviewer-c-judgment-v2"
+        assert judgment.assessment_payload
+        assert judgment.assessment_payload["supporting_claim_ids"]
+        assert judgment.assessment_payload["rejected_claim_ids"]
+        assert judgment.assessment_payload["unresolved_claim_ids"]
+        result = repository.get_result(accepted.session_id)
+        assert result is not None
+        assert result.path == "c_tie_broken"
+        assert result.document["status"] == "caller_decision_required"
+        assert AuditVerifier(repository).verify_session(
+            accepted.session_id
+        ).path == "c_tie_broken"
+    finally:
+        engine.dispose()
+
+
+class RecoverableCrossReviewProvider:
+    def __init__(self) -> None:
+        self.failed = False
+
+    def invoke(self, call: ReviewCall) -> Assessment:
+        if (
+            call.slot == ReviewerSlot.A
+            and call.stage == ReviewStage.CROSS_REVIEW
+            and not self.failed
+        ):
+            self.failed = True
+            raise PermanentReviewerProviderError("simulated cross-review failure")
+        if call.stage == ReviewStage.INDEPENDENT and call.slot == ReviewerSlot.A:
+            return _pause()
+        return _collect()
+
+
+def test_operator_can_recover_one_failed_cross_review_without_losing_history() -> None:
+    engine = create_test_engine()
+    repository = create_test_repository(engine)
+    try:
+        revisions = load_design_plan_revisions()
+        for revision in revisions:
+            slots = {
+                slot: schedule.model_copy(update={"provider": "recoverable"})
+                for slot, schedule in revision.slots.items()
+            }
+            repository.add_plan_revision(revision.model_copy(update={"slots": slots}))
+        accepted = ReviewIntakeService(repository).accept(
+            load_request_fixture("04-surviving-reviewer-conflict.json")
+        )
+        runtime = ProviderRegistryRuntime(
+            {"recoverable": RecoverableCrossReviewProvider()},
+            max_attempts=1,
+        )
+        orchestrator = ReviewOrchestrator(repository, runtime)
+
+        with pytest.raises(ReviewerProviderExhaustedError):
+            orchestrator.run(accepted.session_id, now=datetime.now(UTC))
+        failed_session = repository.get_session(accepted.session_id)
+        assert failed_session is not None
+        assert failed_session.current_state == ReviewState.CROSS_REVIEW_FAILED.value
+
+        recovered = repository.recover_cross_review(
+            session_id=accepted.session_id,
+            operator_id="operator_test",
+            reason="Provider access restored.",
+            recovered_at=datetime.now(UTC),
+        )
+        assert recovered.current_state == ReviewState.CROSS_REVIEW.value
+
+        state = orchestrator.run(accepted.session_id, now=datetime.now(UTC))
+        assert state == ReviewState.RESULT_RETURNED
+        cross_a = next(
+            item
+            for item in repository.list_invocations(accepted.session_id)
+            if item.reviewer_slot == ReviewerSlot.A.value
+            and item.stage == ReviewStage.CROSS_REVIEW.value
+        )
+        attempts = repository.list_provider_attempts(cross_a.invocation_id)
+        assert [attempt.attempt_number for attempt in attempts] == [1, 2]
+        assert [attempt.status for attempt in attempts] == [
+            "permanent_failure",
+            "succeeded",
+        ]
+        recovery = next(
+            event
+            for event in repository.list_events(accepted.session_id)
+            if event.event_type == DomainEventType.STATE_TRANSITIONED
+            and event.payload.get("source")
+            == ReviewState.CROSS_REVIEW_FAILED.value
+        )
+        assert recovery.actor is not None
+        assert recovery.actor.type.value == "operator"
+        assert recovery.payload["recovered_invocation_id"] == cross_a.invocation_id
+        assert AuditVerifier(repository).verify_session(
+            accepted.session_id
+        ).path == "cross_review_resolved"
     finally:
         engine.dispose()
 

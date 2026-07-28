@@ -38,7 +38,10 @@ from conclave.ledger.models import (
     SchedulerWorkItemRecord,
     TaskPackRevisionRecord,
 )
-from conclave.orchestration.state_machine import validate_transition
+from conclave.orchestration.state_machine import (
+    validate_recovery_transition,
+    validate_transition,
+)
 from conclave.plans.models import ReviewPlanRevision
 from conclave.reviewers.runtime import ProviderAttempt
 
@@ -52,6 +55,10 @@ class WorkItemClaimError(RuntimeError):
 
 
 class EventDeliveryClaimError(RuntimeError):
+    pass
+
+
+class ReviewRecoveryError(RuntimeError):
     pass
 
 
@@ -119,6 +126,7 @@ def state_transition_summary(target: ReviewState) -> str:
         ),
         ReviewState.REVIEWER_A_FAILED: "Reviewer A failed.",
         ReviewState.REVIEWER_B_FAILED: "Reviewer B failed.",
+        ReviewState.CROSS_REVIEW_FAILED: "Cross review failed.",
         ReviewState.REVIEWER_C_FAILED: "Reviewer C failed.",
         ReviewState.AWAITING_EVIDENCE: "The review is waiting for more evidence.",
         ReviewState.RESULT_DELIVERY_FAILED: "Review-result delivery failed.",
@@ -921,6 +929,30 @@ class LedgerRepository:
                 summary = f"Reviewer {record.reviewer_slot} submitted a cross-review assessment."
             else:
                 summary = f"Reviewer {record.reviewer_slot} submitted an independent assessment."
+            assessment_document = (
+                assessment_payload.get("assessment", {})
+                if record.stage == ReviewStage.CROSS_REVIEW.value
+                and record.schema_version == "cross-review-v1"
+                else assessment_payload
+            )
+            claim_evidence_refs = tuple(
+                dict.fromkeys(
+                    reference
+                    for claim in assessment_document.get("claims", [])
+                    if isinstance(claim, dict)
+                    for reference in claim.get("evidence_references", [])
+                    if isinstance(reference, str)
+                )
+            )
+            peer_review_evidence_refs = tuple(
+                dict.fromkeys(
+                    reference
+                    for review in assessment_payload.get("peer_claim_reviews", [])
+                    if isinstance(review, dict)
+                    for reference in review.get("evidence_references", [])
+                    if isinstance(reference, str)
+                )
+            )
             self._persist_event(
                 db,
                 PendingDomainEvent(
@@ -937,9 +969,17 @@ class LedgerRepository:
                     summary=summary,
                     payload={
                         "invocation_id": invocation_id,
-                        "category": assessment_payload.get("category"),
-                        "material": assessment_payload.get("material"),
-                        "risk": assessment_payload.get("risk"),
+                        "category": assessment_document.get("category"),
+                        "material": assessment_document.get("material"),
+                        "risk": assessment_document.get("risk"),
+                        "assessment_schema_version": record.schema_version,
+                        "claim_count": len(assessment_document.get("claims", [])),
+                        "cross_review_disposition": assessment_payload.get(
+                            "disposition"
+                        ),
+                        "peer_claim_review_count": len(
+                            assessment_payload.get("peer_claim_reviews", [])
+                        ),
                         "deterministic_fields": [
                             "material",
                             "tracking_health",
@@ -947,7 +987,12 @@ class LedgerRepository:
                             "primary_conversion",
                         ],
                     },
-                    confidence=assessment_payload.get("confidence"),
+                    evidence_refs=tuple(
+                        dict.fromkeys(
+                            (*claim_evidence_refs, *peer_review_evidence_refs)
+                        )
+                    ),
+                    confidence=assessment_document.get("confidence"),
                     correlation_id=record.session_id,
                     occurred_at=completed_at,
                 ),
@@ -1066,7 +1111,17 @@ class LedgerRepository:
                     ),
                 )
 
-            ordered = sorted(records, key=lambda item: item.attempt_number)
+            db.flush()
+            ordered = list(
+                db.scalars(
+                    select(ReviewerProviderAttemptRecord)
+                    .where(
+                        ReviewerProviderAttemptRecord.invocation_id
+                        == invocation_id
+                    )
+                    .order_by(ReviewerProviderAttemptRecord.attempt_number)
+                )
+            )
             last = ordered[-1]
             invocation.attempt_count = len(ordered)
             invocation.provider_request_id = last.provider_request_id
@@ -1146,6 +1201,85 @@ class LedgerRepository:
             )
             db.flush()
             return record
+
+    def recover_cross_review(
+        self,
+        *,
+        session_id: str,
+        operator_id: str,
+        reason: str,
+        recovered_at: datetime,
+    ) -> ReviewSessionRecord:
+        if not operator_id.strip():
+            raise ValueError("operator_id cannot be empty")
+        if not reason.strip():
+            raise ValueError("recovery reason cannot be empty")
+        with self._sessions.begin() as db:
+            session = db.scalar(
+                select(ReviewSessionRecord)
+                .where(ReviewSessionRecord.session_id == session_id)
+                .with_for_update()
+            )
+            if session is None:
+                raise LookupError(f"unknown review session {session_id!r}")
+            source = ReviewState(session.current_state)
+            try:
+                validate_recovery_transition(source, ReviewState.CROSS_REVIEW)
+            except ValueError as exc:
+                raise ReviewRecoveryError(
+                    f"review session cannot recover from {source.value!r}"
+                ) from exc
+            failed = list(
+                db.scalars(
+                    select(ReviewerInvocationRecord)
+                    .where(
+                        ReviewerInvocationRecord.session_id == session_id,
+                        ReviewerInvocationRecord.stage
+                        == ReviewStage.CROSS_REVIEW.value,
+                        ReviewerInvocationRecord.status == "failed",
+                    )
+                    .with_for_update()
+                )
+            )
+            if len(failed) != 1:
+                raise ReviewRecoveryError(
+                    "cross-review recovery requires exactly one failed invocation"
+                )
+            invocation = failed[0]
+            invocation.status = "pending"
+            invocation.last_error = None
+            invocation.completed_at = None
+            session.current_state = ReviewState.CROSS_REVIEW.value
+            self._persist_event(
+                db,
+                PendingDomainEvent(
+                    event_type=DomainEventType.STATE_TRANSITIONED,
+                    stream_type="review_session",
+                    stream_id=session_id,
+                    session_id=session_id,
+                    actor=EventActor(
+                        type=EventActorType.OPERATOR,
+                        id=operator_id,
+                    ),
+                    stage=ReviewStage.CROSS_REVIEW,
+                    round_number=invocation.round,
+                    summary=(
+                        "An operator reopened cross review after a failed "
+                        f"Reviewer {invocation.reviewer_slot} invocation."
+                    ),
+                    payload={
+                        "source": source.value,
+                        "target": ReviewState.CROSS_REVIEW.value,
+                        "recovered_invocation_id": invocation.invocation_id,
+                        "recovered_slot": invocation.reviewer_slot,
+                        "reason": reason[:500],
+                    },
+                    correlation_id=session_id,
+                    occurred_at=recovered_at,
+                ),
+            )
+            db.flush()
+            return session
 
     def transition_session(
         self,

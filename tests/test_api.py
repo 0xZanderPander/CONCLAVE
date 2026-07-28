@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -106,6 +107,51 @@ async def test_local_api_can_run_the_automatic_task_pack_route() -> None:
         assert result.status_code == 200
         assert result.json()["disagreement"]["level"] == "none"
         assert len(result.json()["panel_metadata"]["reviewers"]) == 1
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_operations_api_exposes_controlled_cross_review_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = create_test_engine()
+    app = create_app(
+        settings=Settings(database_url="sqlite+pysqlite://"),
+        engine=engine,
+        seed_design_fixtures=True,
+    )
+    captured: dict[str, object] = {}
+
+    def recover_cross_review(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            session_id=kwargs["session_id"],
+            current_state="cross_review",
+        )
+
+    monkeypatch.setattr(
+        app.state.repository,
+        "recover_cross_review",
+        recover_cross_review,
+    )
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/operations/reviews/rs_recovery/recover-cross-review",
+                json={"reason": "Provider access restored."},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "review_session_id": "rs_recovery",
+            "state": "cross_review",
+        }
+        assert captured["operator_id"] == "local-operator"
+        assert captured["reason"] == "Provider access restored."
     finally:
         engine.dispose()
 

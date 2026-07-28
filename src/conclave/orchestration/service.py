@@ -19,12 +19,16 @@ from conclave.orchestration.result_builder import build_review_result
 from conclave.plans.models import ReviewPlanRevision, SlotSchedule
 from conclave.reviewers.runtime import (
     Assessment,
+    AssessmentClaim,
+    CrossReviewResponse,
     PeerAssessment,
+    PeerCrossReviewResponse,
     ReviewCall,
     ReviewerCJudgment,
     ReviewerProviderExhaustedError,
     ReviewerRuntime,
     ReviewOutput,
+    assign_assessment_claim_ids,
 )
 from conclave.task_packs.comparison import (
     ComparisonResult,
@@ -173,7 +177,21 @@ class ReviewOrchestrator:
                 b = self._completed_assessment(
                     session_id, ReviewerSlot.B, ReviewStage.INDEPENDENT, 1
                 )
-                cross_a = self._invoke_assessment(
+                initial = compare_assessments(
+                    a,
+                    b,
+                    task_pack,
+                    failed_goal=(
+                        snapshot.content["review_trigger"]["kind"]
+                        == TriggerKind.FAILED_GOAL.value
+                    ),
+                )
+                initial_context = ComparisonRound(
+                    stage=ReviewStage.INDEPENDENT,
+                    round=1,
+                    comparison=initial,
+                ).public_document()
+                cross_a = self._invoke_cross_review(
                     session_id=session_id,
                     snapshot_hash=snapshot.content_hash,
                     slot=ReviewerSlot.A,
@@ -182,6 +200,12 @@ class ReviewOrchestrator:
                     assignment=revision.slots[ReviewerSlot.A],
                     now=now,
                     prior_claims=b.claims,
+                    own_assessment=PeerAssessment(
+                        slot=ReviewerSlot.A,
+                        stage=ReviewStage.INDEPENDENT,
+                        round=1,
+                        assessment=a,
+                    ),
                     snapshot=snapshot.content,
                     peer_assessments=(
                         PeerAssessment(
@@ -191,8 +215,9 @@ class ReviewOrchestrator:
                             assessment=b,
                         ),
                     ),
+                    comparison_history=(initial_context,),
                 )
-                cross_b = self._invoke_assessment(
+                cross_b = self._invoke_cross_review(
                     session_id=session_id,
                     snapshot_hash=snapshot.content_hash,
                     slot=ReviewerSlot.B,
@@ -201,6 +226,12 @@ class ReviewOrchestrator:
                     assignment=revision.slots[ReviewerSlot.B],
                     now=now,
                     prior_claims=a.claims,
+                    own_assessment=PeerAssessment(
+                        slot=ReviewerSlot.B,
+                        stage=ReviewStage.INDEPENDENT,
+                        round=1,
+                        assessment=b,
+                    ),
                     snapshot=snapshot.content,
                     peer_assessments=(
                         PeerAssessment(
@@ -210,6 +241,7 @@ class ReviewOrchestrator:
                             assessment=a,
                         ),
                     ),
+                    comparison_history=(initial_context,),
                 )
                 comparison = compare_assessments(cross_a, cross_b, task_pack)
                 self._record_comparison(
@@ -253,6 +285,22 @@ class ReviewOrchestrator:
                 c = self._completed_assessment(
                     session_id, ReviewerSlot.C, ReviewStage.INDEPENDENT, 1
                 )
+                initial_a = self._completed_assessment(
+                    session_id, ReviewerSlot.A, ReviewStage.INDEPENDENT, 1
+                )
+                initial_b = self._completed_assessment(
+                    session_id, ReviewerSlot.B, ReviewStage.INDEPENDENT, 1
+                )
+                initial = compare_assessments(
+                    initial_a,
+                    initial_b,
+                    task_pack,
+                    failed_goal=(
+                        snapshot.content["review_trigger"]["kind"]
+                        == TriggerKind.FAILED_GOAL.value
+                    ),
+                )
+                cross = compare_assessments(a, b, task_pack)
                 self._invoke_judgment(
                     session_id=session_id,
                     snapshot_hash=snapshot.content_hash,
@@ -262,6 +310,12 @@ class ReviewOrchestrator:
                     assignment=revision.slots[ReviewerSlot.C],
                     now=now,
                     prior_claims=c.claims + a.claims + b.claims,
+                    own_assessment=PeerAssessment(
+                        slot=ReviewerSlot.C,
+                        stage=ReviewStage.INDEPENDENT,
+                        round=1,
+                        assessment=c,
+                    ),
                     snapshot=snapshot.content,
                     peer_assessments=(
                         PeerAssessment(
@@ -282,6 +336,22 @@ class ReviewOrchestrator:
                             round=2,
                             assessment=b,
                         ),
+                    ),
+                    cross_review_responses=self._cross_review_responses_for_judgment(
+                        session_id,
+                        revision,
+                    ),
+                    comparison_history=(
+                        ComparisonRound(
+                            stage=ReviewStage.INDEPENDENT,
+                            round=1,
+                            comparison=initial,
+                        ).public_document(),
+                        ComparisonRound(
+                            stage=ReviewStage.CROSS_REVIEW,
+                            round=2,
+                            comparison=cross,
+                        ).public_document(),
                     ),
                 )
                 return self._finish_resumably(
@@ -353,7 +423,22 @@ class ReviewOrchestrator:
             return self._finish(session_id, path, snapshot)
 
         self._transition(session_id, ReviewState.CROSS_REVIEW)
-        cross_a = self._invoke(
+        task_pack = self._task_pack_for_session(session, snapshot)
+        initial = compare_assessments(
+            a,
+            b,
+            task_pack,
+            failed_goal=(
+                snapshot.content["review_trigger"]["kind"]
+                == TriggerKind.FAILED_GOAL.value
+            ),
+        )
+        initial_context = ComparisonRound(
+            stage=ReviewStage.INDEPENDENT,
+            round=1,
+            comparison=initial,
+        ).public_document()
+        cross_a = self._invoke_cross_review(
             session_id=session_id,
             snapshot_hash=snapshot.content_hash,
             slot=ReviewerSlot.A,
@@ -362,6 +447,12 @@ class ReviewOrchestrator:
             assignment=revision.slots[ReviewerSlot.A],
             now=now,
             prior_claims=b.claims,
+            own_assessment=PeerAssessment(
+                slot=ReviewerSlot.A,
+                stage=ReviewStage.INDEPENDENT,
+                round=1,
+                assessment=a,
+            ),
             snapshot=snapshot.content,
             peer_assessments=(
                 PeerAssessment(
@@ -371,8 +462,9 @@ class ReviewOrchestrator:
                     assessment=b,
                 ),
             ),
+            comparison_history=(initial_context,),
         )
-        cross_b = self._invoke(
+        cross_b = self._invoke_cross_review(
             session_id=session_id,
             snapshot_hash=snapshot.content_hash,
             slot=ReviewerSlot.B,
@@ -381,6 +473,12 @@ class ReviewOrchestrator:
             assignment=revision.slots[ReviewerSlot.B],
             now=now,
             prior_claims=a.claims,
+            own_assessment=PeerAssessment(
+                slot=ReviewerSlot.B,
+                stage=ReviewStage.INDEPENDENT,
+                round=1,
+                assessment=b,
+            ),
             snapshot=snapshot.content,
             peer_assessments=(
                 PeerAssessment(
@@ -390,6 +488,7 @@ class ReviewOrchestrator:
                     assessment=a,
                 ),
             ),
+            comparison_history=(initial_context,),
         )
 
         if path == FixturePath.CROSS_REVIEW_RESOLVED:
@@ -407,7 +506,8 @@ class ReviewOrchestrator:
             snapshot=snapshot.content,
         )
         self._transition(session_id, ReviewState.REVIEWER_C_JUDGING)
-        self._invoke(
+        cross = compare_assessments(cross_a, cross_b, task_pack)
+        self._invoke_judgment(
             session_id=session_id,
             snapshot_hash=snapshot.content_hash,
             slot=ReviewerSlot.C,
@@ -416,6 +516,12 @@ class ReviewOrchestrator:
             assignment=revision.slots[ReviewerSlot.C],
             now=now,
             prior_claims=c.claims + cross_a.claims + cross_b.claims,
+            own_assessment=PeerAssessment(
+                slot=ReviewerSlot.C,
+                stage=ReviewStage.INDEPENDENT,
+                round=1,
+                assessment=c,
+            ),
             snapshot=snapshot.content,
             peer_assessments=(
                 PeerAssessment(
@@ -437,6 +543,18 @@ class ReviewOrchestrator:
                     assessment=cross_b,
                 ),
             ),
+            cross_review_responses=self._cross_review_responses_for_judgment(
+                session_id,
+                revision,
+            ),
+            comparison_history=(
+                initial_context,
+                ComparisonRound(
+                    stage=ReviewStage.CROSS_REVIEW,
+                    round=2,
+                    comparison=cross,
+                ).public_document(),
+            ),
         )
         return self._finish(session_id, path, snapshot)
 
@@ -451,11 +569,17 @@ class ReviewOrchestrator:
         assignment: SlotSchedule,
         now: datetime,
         snapshot: dict[str, Any],
-        prior_claims: tuple[str, ...] = (),
+        prior_claims: tuple[str | AssessmentClaim, ...] = (),
+        own_assessment: PeerAssessment | None = None,
         peer_assessments: tuple[PeerAssessment, ...] = (),
+        cross_review_responses: tuple[PeerCrossReviewResponse, ...] = (),
+        comparison_history: tuple[dict[str, Any], ...] = (),
     ) -> ReviewOutput:
         provider = assignment.provider or "fixture"
         model = assignment.model or "deterministic"
+        role_version, prompt_version, schema_version = assignment.contract_for_stage(
+            stage
+        )
         invocation = self._repository.record_invocation(
             session_id=session_id,
             slot=slot,
@@ -463,8 +587,8 @@ class ReviewOrchestrator:
             stage=stage,
             round_number=round_number,
             snapshot_hash=snapshot_hash,
-            prompt_version=assignment.prompt_version,
-            schema_version=assignment.schema_version,
+            prompt_version=prompt_version,
+            schema_version=schema_version,
             provider=provider,
             model=model,
         )
@@ -475,6 +599,13 @@ class ReviewOrchestrator:
                 )
             if stage == ReviewStage.JUDGING:
                 return ReviewerCJudgment.model_validate(invocation.assessment_payload)
+            if (
+                stage == ReviewStage.CROSS_REVIEW
+                and schema_version == "cross-review-v1"
+            ):
+                return CrossReviewResponse.model_validate(
+                    invocation.assessment_payload
+                )
             return Assessment.model_validate(invocation.assessment_payload)
         if invocation.status != "pending":
             raise OrchestrationStateError(
@@ -490,14 +621,18 @@ class ReviewOrchestrator:
             reviewer_type=assignment.reviewer_type,
             provider=provider,
             model=model,
-            role_version=assignment.role_version,
-            prompt_version=assignment.prompt_version,
-            schema_version=assignment.schema_version,
+            role_version=role_version,
+            prompt_version=prompt_version,
+            schema_version=schema_version,
             snapshot=snapshot,
             prior_claims=prior_claims,
+            own_assessment=own_assessment,
             peer_assessments=peer_assessments,
+            cross_review_responses=cross_review_responses,
+            comparison_history=comparison_history,
             requested_at=now,
-            provider_policy=assignment.provider_policy,
+            provider_policy=assignment.provider_policy_for_stage(stage),
+            attempt_number=invocation.attempt_count + 1,
         )
         session = self._repository.get_session(session_id)
         snapshot_record = self._repository.get_snapshot(session_id)
@@ -514,6 +649,18 @@ class ReviewOrchestrator:
             if stage == ReviewStage.JUDGING:
                 if not isinstance(output, ReviewerCJudgment):
                     raise TypeError("reviewer C judging must return ReviewerCJudgment")
+                if (
+                    schema_version == "reviewer-c-judgment-v2"
+                    and output.resolution_assessment is not None
+                ):
+                    output = output.model_copy(
+                        update={
+                            "resolution_assessment": assign_assessment_claim_ids(
+                                output.resolution_assessment,
+                                invocation_id=invocation.invocation_id,
+                            )
+                        }
+                    )
                 output = self._task_packs.normalize_judgment(
                     snapshot,
                     output,
@@ -523,10 +670,40 @@ class ReviewOrchestrator:
                     snapshot,
                     output,
                     task_pack=task_pack,
+                    schema_version=schema_version,
+                    available_claim_ids=self._available_judgment_claim_ids(call),
+                )
+            elif stage == ReviewStage.CROSS_REVIEW and schema_version == "cross-review-v1":
+                if not isinstance(output, CrossReviewResponse):
+                    raise TypeError(
+                        "cross-review-v1 returned a non-cross-review response"
+                    )
+                normalized_assessment = assign_assessment_claim_ids(
+                    output.assessment,
+                    invocation_id=invocation.invocation_id,
+                )
+                normalized_assessment = self._task_packs.normalize_assessment(
+                    snapshot,
+                    normalized_assessment,
+                    task_pack=task_pack,
+                )
+                output = output.model_copy(
+                    update={"assessment": normalized_assessment}
+                )
+                self._task_packs.validate_cross_review(
+                    snapshot,
+                    output,
+                    peer_claim_ids=self._peer_claim_ids(call),
+                    task_pack=task_pack,
                 )
             else:
                 if not isinstance(output, Assessment):
                     raise TypeError("assessment stage returned a reviewer-C judgment")
+                if schema_version == "assessment-v2":
+                    output = assign_assessment_claim_ids(
+                        output,
+                        invocation_id=invocation.invocation_id,
+                    )
                 output = self._task_packs.normalize_assessment(
                     snapshot,
                     output,
@@ -536,6 +713,7 @@ class ReviewOrchestrator:
                     snapshot,
                     output,
                     task_pack=task_pack,
+                    schema_version=schema_version,
                 )
         except Exception as exc:
             if isinstance(exc, ReviewerProviderExhaustedError):
@@ -548,11 +726,15 @@ class ReviewOrchestrator:
                 error=str(exc),
                 completed_at=now,
             )
-            failure = {
-                ReviewerSlot.A: ReviewState.REVIEWER_A_FAILED,
-                ReviewerSlot.B: ReviewState.REVIEWER_B_FAILED,
-                ReviewerSlot.C: ReviewState.REVIEWER_C_FAILED,
-            }[slot]
+            failure = (
+                ReviewState.CROSS_REVIEW_FAILED
+                if stage == ReviewStage.CROSS_REVIEW
+                else {
+                    ReviewerSlot.A: ReviewState.REVIEWER_A_FAILED,
+                    ReviewerSlot.B: ReviewState.REVIEWER_B_FAILED,
+                    ReviewerSlot.C: ReviewState.REVIEWER_C_FAILED,
+                }[slot]
+            )
             self._transition(session_id, failure)
             raise
         self._repository.complete_invocation(
@@ -568,11 +750,43 @@ class ReviewOrchestrator:
             raise OrchestrationStateError("assessment invocation returned a judgment")
         return output
 
+    def _invoke_cross_review(self, **kwargs: Any) -> Assessment:
+        output = self._invoke(**kwargs)
+        if isinstance(output, CrossReviewResponse):
+            return output.assessment
+        if isinstance(output, Assessment):
+            return output
+        raise OrchestrationStateError("cross-review invocation returned a judgment")
+
     def _invoke_judgment(self, **kwargs: Any) -> ReviewerCJudgment:
         output = self._invoke(**kwargs)
         if not isinstance(output, ReviewerCJudgment):
             raise OrchestrationStateError("judging invocation returned an assessment")
         return output
+
+    @staticmethod
+    def _peer_claim_ids(call: ReviewCall) -> frozenset[str]:
+        return frozenset(
+            claim.claim_id
+            for peer in call.peer_assessments
+            for claim in peer.assessment.claims
+            if isinstance(claim, AssessmentClaim) and claim.claim_id is not None
+        )
+
+    @staticmethod
+    def _available_judgment_claim_ids(call: ReviewCall) -> frozenset[str]:
+        assessments = []
+        if call.own_assessment is not None:
+            assessments.append(call.own_assessment.assessment)
+        assessments.extend(
+            item.response.assessment for item in call.cross_review_responses
+        )
+        return frozenset(
+            claim.claim_id
+            for assessment in assessments
+            for claim in assessment.claims
+            if isinstance(claim, AssessmentClaim) and claim.claim_id is not None
+        )
 
     def _finish(
         self,
@@ -932,7 +1146,56 @@ class ReviewOrchestrator:
             raise OrchestrationStateError(
                 f"missing completed {slot.value} {stage.value} round {round_number} assessment"
             )
+        if (
+            stage == ReviewStage.CROSS_REVIEW
+            and record.schema_version == "cross-review-v1"
+        ):
+            return CrossReviewResponse.model_validate(
+                record.assessment_payload
+            ).assessment
         return Assessment.model_validate(record.assessment_payload)
+
+    def _completed_cross_review_response(
+        self,
+        session_id: str,
+        slot: ReviewerSlot,
+    ) -> PeerCrossReviewResponse:
+        record = self._find_invocation(
+            session_id,
+            slot,
+            ReviewStage.CROSS_REVIEW,
+            2,
+        )
+        if (
+            record is None
+            or record.status != "completed"
+            or record.assessment_payload is None
+            or record.schema_version != "cross-review-v1"
+        ):
+            raise OrchestrationStateError(
+                f"missing completed {slot.value} cross-review-v1 response"
+            )
+        return PeerCrossReviewResponse(
+            slot=slot,
+            response=CrossReviewResponse.model_validate(
+                record.assessment_payload
+            ),
+        )
+
+    def _cross_review_responses_for_judgment(
+        self,
+        session_id: str,
+        revision: ReviewPlanRevision,
+    ) -> tuple[PeerCrossReviewResponse, ...]:
+        _role, _prompt, schema = revision.slots[
+            ReviewerSlot.C
+        ].contract_for_stage(ReviewStage.JUDGING)
+        if schema != "reviewer-c-judgment-v2":
+            return ()
+        return (
+            self._completed_cross_review_response(session_id, ReviewerSlot.A),
+            self._completed_cross_review_response(session_id, ReviewerSlot.B),
+        )
 
     def _completed_judgment(self, session_id: str) -> ReviewerCJudgment:
         record = self._find_invocation(

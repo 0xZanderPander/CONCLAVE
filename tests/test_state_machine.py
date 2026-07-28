@@ -48,3 +48,23 @@ def test_completed_trace_is_terminal() -> None:
 
     with pytest.raises(InvalidTransitionError):
         workflow.transition(ReviewState.REQUESTED)
+
+
+def test_cross_review_failure_is_a_legal_terminal_transition() -> None:
+    workflow = ReviewWorkflow()
+    workflow.replay(
+        [
+            "requested",
+            "validated",
+            "snapshotted",
+            "reviewer_a",
+            "baseline_recorded",
+            "reviewer_b",
+            "comparing",
+            "cross_review",
+            "cross_review_failed",
+        ]
+    )
+
+    with pytest.raises(InvalidTransitionError):
+        workflow.transition(ReviewState.REVIEWER_C_INDEPENDENT)

@@ -25,6 +25,9 @@ flowchart TB
     B --> Compare
     Compare -->|"Within tolerance"| Resolve
     Compare -->|"Beyond tolerance<br/>or failed goal"| Cross["One bounded cross review"]
+    Cross -->|"Provider or contract failure"| CrossFailed["cross_review_failed<br/>terminal + auditable"]
+    Ops -.->|"Explicit recovery<br/>reason required"| CrossFailed
+    CrossFailed -.->|"Reopen failed invocation<br/>preserve attempts"| Cross
     Cross -->|"Resolved"| Resolve
     Cross -->|"Still disagree"| CBlind["Reviewer C<br/>blind assessment"]
     CBlind --> CJudge["Reviewer C<br/>explicit judgment:<br/>select A/B, synthesize,<br/>insufficient evidence, or escalate"]

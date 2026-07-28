@@ -1,4 +1,5 @@
 import json
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from functools import lru_cache
 from typing import Any
@@ -8,7 +9,12 @@ from pydantic import ValidationError
 from conclave.contracts.validation import ContractValidationError
 from conclave.domain.enums import RecommendationCategory
 from conclave.paths import contracts_root
-from conclave.reviewers.runtime import Assessment, ReviewerCJudgment
+from conclave.reviewers.runtime import (
+    Assessment,
+    AssessmentClaim,
+    CrossReviewResponse,
+    ReviewerCJudgment,
+)
 from conclave.task_packs.models import (
     ComparatorProfile,
     RequestEligibility,
@@ -101,8 +107,11 @@ class TaskPackRegistry:
         assessment: Assessment,
         *,
         task_pack: TaskPack | None = None,
+        schema_version: str = "assessment-v1",
     ) -> None:
         task_pack = task_pack or self.get(document["task_pack_ref"])
+        if schema_version == "assessment-v2":
+            self._validate_structured_claims(document, assessment)
         missing = [
             name
             for name in task_pack.required_assessment_fields
@@ -200,16 +209,50 @@ class TaskPackRegistry:
         judgment: ReviewerCJudgment,
         *,
         task_pack: TaskPack | None = None,
+        schema_version: str = "assessment-v1",
+        available_claim_ids: frozenset[str] = frozenset(),
     ) -> None:
         task_pack = task_pack or self.get(document["task_pack_ref"])
-        if judgment.resolution_assessment is None:
-            return
-        self.validate_assessment(
-            document,
-            judgment.resolution_assessment,
-            task_pack=task_pack,
-        )
+        if schema_version == "reviewer-c-judgment-v2":
+            if judgment.unresolved_claims:
+                raise ContractValidationError(
+                    "reviewer-c-judgment-v2 cannot use legacy unresolved claim text"
+                )
+            classified = (
+                *judgment.supporting_claim_ids,
+                *judgment.rejected_claim_ids,
+                *judgment.unresolved_claim_ids,
+            )
+            if not classified:
+                raise ContractValidationError(
+                    "reviewer-c-judgment-v2 must classify submitted claims"
+                )
+            unknown = set(classified) - available_claim_ids
+            if unknown:
+                raise ContractValidationError(
+                    f"reviewer C classified unknown claim IDs: {sorted(unknown)!r}"
+                )
+            omitted = available_claim_ids - set(classified)
+            if omitted:
+                raise ContractValidationError(
+                    f"reviewer C omitted claim IDs: {sorted(omitted)!r}"
+                )
+        if judgment.resolution_assessment is not None:
+            self.validate_assessment(
+                document,
+                judgment.resolution_assessment,
+                task_pack=task_pack,
+                schema_version=(
+                    "assessment-v2"
+                    if schema_version == "reviewer-c-judgment-v2"
+                    else schema_version
+                ),
+            )
         if judgment.verdict in {"insufficient_evidence", "escalate"}:
+            if judgment.resolution_assessment is None:
+                raise ContractValidationError(
+                    f"{judgment.verdict} requires a resolution assessment"
+                )
             assessment = judgment.resolution_assessment
             if assessment.category not in {
                 RecommendationCategory.COLLECT_MORE_DATA,
@@ -227,6 +270,119 @@ class TaskPackRegistry:
                 raise ContractValidationError(
                     f"{judgment.verdict} cannot include optimization actions"
                 )
+
+    def validate_cross_review(
+        self,
+        document: dict[str, Any],
+        response: CrossReviewResponse,
+        *,
+        peer_claim_ids: frozenset[str],
+        task_pack: TaskPack | None = None,
+    ) -> None:
+        task_pack = task_pack or self.get(document["task_pack_ref"])
+        reviewed = {review.claim_id for review in response.peer_claim_reviews}
+        unknown = reviewed - peer_claim_ids
+        if unknown:
+            raise ContractValidationError(
+                f"cross review classified unknown peer claim IDs: {sorted(unknown)!r}"
+            )
+        omitted = peer_claim_ids - reviewed
+        if omitted:
+            raise ContractValidationError(
+                f"cross review omitted peer claim IDs: {sorted(omitted)!r}"
+            )
+        for review in response.peer_claim_reviews:
+            self._validate_evidence_references(
+                document,
+                review.evidence_references,
+                label=f"peer claim {review.claim_id!r}",
+            )
+        self.validate_assessment(
+            document,
+            response.assessment,
+            task_pack=task_pack,
+            schema_version="assessment-v2",
+        )
+
+    @staticmethod
+    def _validate_structured_claims(
+        document: dict[str, Any],
+        assessment: Assessment,
+    ) -> None:
+        if not assessment.claims:
+            raise ContractValidationError(
+                "assessment-v2 requires at least one structured claim"
+            )
+        for claim in assessment.claims:
+            if not isinstance(claim, AssessmentClaim):
+                raise ContractValidationError(
+                    "assessment-v2 claims must use the structured claim contract"
+                )
+            if claim.claim_id is None:
+                raise ContractValidationError(
+                    "assessment-v2 claim is missing its Conclave-issued ID"
+                )
+            if not claim.evidence_references:
+                raise ContractValidationError(
+                    f"assessment-v2 claim {claim.claim_id!r} has no evidence references"
+                )
+            TaskPackRegistry._validate_evidence_references(
+                document,
+                claim.evidence_references,
+                label=f"claim {claim.claim_id!r}",
+            )
+
+    @staticmethod
+    def _validate_evidence_references(
+        document: dict[str, Any],
+        references: tuple[str, ...],
+        *,
+        label: str,
+    ) -> None:
+        allowed_roots = {
+            "sections",
+            "quality",
+            "materiality",
+            "action_ontology",
+            "allowed_recommendations",
+        }
+        for reference in references:
+            root = reference.split(".", 1)[0]
+            if root not in allowed_roots:
+                raise ContractValidationError(
+                    f"{label} evidence reference {reference!r} uses an unsupported root"
+                )
+            if not TaskPackRegistry._snapshot_path_exists(document, reference):
+                raise ContractValidationError(
+                    f"{label} evidence reference {reference!r} does not exist "
+                    "in the immutable snapshot"
+                )
+
+    @staticmethod
+    def _snapshot_path_exists(document: object, reference: str) -> bool:
+        if not reference or reference.startswith(".") or reference.endswith("."):
+            return False
+        current = document
+        for segment in reference.split("."):
+            if not segment:
+                return False
+            if isinstance(current, Mapping):
+                if segment not in current:
+                    return False
+                current = current[segment]
+                continue
+            if (
+                isinstance(current, Sequence)
+                and not isinstance(current, (str, bytes, bytearray))
+                and segment.isdigit()
+            ):
+                index = int(segment)
+                if index >= len(current):
+                    return False
+                current = current[index]
+                continue
+            return False
+        return True
 
     def recommendation_materiality(
         self,

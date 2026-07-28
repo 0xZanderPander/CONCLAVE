@@ -105,6 +105,7 @@ flowchart TB
     B --> Compare
     Compare -->|"Within tolerance"| Resolve
     Compare -->|"Beyond tolerance<br/>or failed goal"| Cross["One bounded cross review"]
+    Cross -->|"Provider or contract failure"| CrossFailed["cross_review_failed<br/>terminal + auditable"]
     Cross -->|"Resolved"| Resolve
     Cross -->|"Still disagree"| CBlind["Reviewer C<br/>blind assessment"]
     CBlind --> CJudge["Reviewer C<br/>explicit judgment:<br/>select A/B, synthesize,<br/>insufficient evidence, or escalate"]
@@ -240,6 +241,11 @@ reviewer's content. Reviewer C has no cadence.
 
 ## Fixed MVP State Machine
 
+The kernel implements this state sequence. `assessment-v2`, exact
+snapshot-reference validation, typed A/B cross-review responses, separate C
+assessment and judgment contracts, and the explicit `cross_review_failed` path
+are implemented.
+
 ```text
 requested
     |
@@ -260,6 +266,12 @@ comparing
     +--> within_tolerance --------------------------+
     |                                               |
 cross_review                                        |
+    |                                               |
+    +--> provider or contract failure --> cross_review_failed
+    |                                      |
+    |                       operator recovery with reason
+    |                                      |
+    +<------------- reopen failed invocation only
     |                                               |
     +--> resolved ----------------------------------+
     |                                               |
@@ -286,13 +298,18 @@ Explicit terminal or retryable failure states:
 - `stale_or_ineligible_evidence`
 - `reviewer_a_failed`
 - `reviewer_b_failed`
+- `cross_review_failed`
 - `reviewer_c_failed`
 - `awaiting_evidence`
 - `result_delivery_failed`
 - `cancelled`
 
-Retries reuse the same snapshot and reviewer assignment and cannot duplicate
-completed work.
+Provider retries inside one invocation reuse the same snapshot and reviewer
+assignment and cannot duplicate completed work. Work-item retry handles
+recoverable queue failures. A separate operator-only endpoint can recover
+`cross_review_failed`. It reopens exactly one failed cross-review invocation,
+keeps all previous attempts and completed assessments, records the operator and
+reason, and returns the session to the existing bounded cross-review state.
 
 ## Runtime Processes
 
@@ -301,8 +318,8 @@ completed work.
 - accept local idempotent fixture requests in development and test
 - require scoped bearer credentials and caller ownership in non-local mode
 - expose review status and complete review records
-- deliver or expose structured results
-- accept opaque caller feedback
+- expose structured results through polling
+- accept opaque caller feedback in planned Phase 6 work
 - expose health and readiness
 
 ### Scheduler/Worker
@@ -378,14 +395,19 @@ review(snapshot, role, round, prior_claims, prompt_version, schema_version)
     -> validated assessment + safe provider-attempt telemetry
 ```
 
-The runtime is selected explicitly as `fixture` or `openai`. Non-local
+The runtime is selected explicitly as `fixture`, `openai`, `anthropic`, or
+`multi_provider`. Non-local
 deployments cannot start with the fixture runtime, and provider names never
 fall back silently. The first production adapter uses OpenAI Responses for
-reviewers A and B with `store=false`, no tools, strict JSON Schema output,
-separate versioned evidence-only prompts, and no external memory or browsing.
-Only the blind independent stage is approved on this adapter. Cross review and
-Reviewer C are rejected before any provider request until their prompts are
-separately reviewed.
+reviewers A, B, and C with `store=false`, no tools, strict JSON Schema output,
+separate versioned prompts, and no external memory or browsing. The approved
+contracts cover blind assessment, one bounded cross-review round, C's blind
+assessment, and C's later judgment.
+
+The second adapter uses Anthropic Messages with the same approved contracts,
+structured JSON Schema output, no tools, and no provider conversation state.
+It is fixture-tested but not live-tested. Cross-provider use remains disabled
+until a separate Anthropic credential is configured.
 
 The Phase 4A live gate intentionally used the same OpenAI model in both slots
 to verify the common rail. This is not evidence of multi-model benefit.
@@ -393,7 +415,8 @@ Because provider, model, reviewer type, role, and prompt are configured per
 slot, a later deployment can put a different model provider or a non-model
 checker in B without changing orchestration or comparison logic.
 
-Each plan slot carries an editable provider policy. The initial approved limits
+Each plan slot carries an editable provider policy, with optional cross-review
+and judging overrides for stages whose bounded context is larger. The initial limits
 are two attempts, 90 seconds per attempt, 30,000 input characters, 4,000 output
 tokens, a $0.15 call ceiling, and a versioned pricing configuration. Only typed
 transient provider failures retry. Invalid structured output and permanent
@@ -418,6 +441,21 @@ assessment plus A/B final claims and returns an explicit judgment:
 Selecting A or B preserves that exact final assessment. Any synthesis, safe
 fallback, or escalation must supply an explicit assessment that validates
 against the pinned task pack. There is no inferred verdict.
+
+The kernel supports internal `assessment-v2`.
+Claims become structured records with Conclave-issued IDs, exact snapshot
+references, and alternative explanations. Cross-review responses identify the
+peer claim IDs they accept, challenge, or find insufficiently supported and
+return one complete affirm-or-revise assessment. Conclave validates every v2
+reference against the immutable snapshot before storing the response.
+Historical `assessment-v1` string claims remain readable and round-trip without
+conversion.
+
+The public `review-result/v1` contract does not require a version change for
+this upgrade because it already supports structured claim statements,
+evidence references, and alternative explanations. The current result builder
+now projects v2 claim references and alternative explanations while preserving
+the legacy empty-reference projection for v1 string claims.
 
 ### Comparator
 

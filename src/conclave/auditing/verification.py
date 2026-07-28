@@ -9,8 +9,12 @@ from conclave.domain.enums import (
     TriggerKind,
 )
 from conclave.ledger.repository import LedgerRepository, canonical_hash
-from conclave.orchestration.state_machine import InvalidTransitionError, validate_transition
-from conclave.reviewers.runtime import Assessment, ReviewerCJudgment
+from conclave.orchestration.state_machine import (
+    InvalidTransitionError,
+    validate_recovery_transition,
+    validate_transition,
+)
+from conclave.reviewers.runtime import Assessment, CrossReviewResponse, ReviewerCJudgment
 from conclave.task_packs.comparison import ComparisonRound, compare_assessments
 from conclave.task_packs.models import TaskPack
 
@@ -126,7 +130,10 @@ class AuditVerifier:
             try:
                 validate_transition(source, target)
             except InvalidTransitionError as exc:
-                raise AuditVerificationError(str(exc)) from exc
+                try:
+                    validate_recovery_transition(source, target)
+                except InvalidTransitionError:
+                    raise AuditVerificationError(str(exc)) from exc
             if target == ReviewState.RESULT_RETURNED and not result_recorded:
                 raise AuditVerificationError("result_returned occurred before result_recorded")
             reconstructed = target
@@ -156,7 +163,19 @@ class AuditVerifier:
             resolution_state,
             ReviewState.RESULT_RETURNED,
         )
-        if tuple(state_trace) != expected_states:
+        decision_state_trace: list[ReviewState] = []
+        index = 0
+        while index < len(state_trace):
+            if (
+                state_trace[index] == ReviewState.CROSS_REVIEW_FAILED
+                and index + 1 < len(state_trace)
+                and state_trace[index + 1] == ReviewState.CROSS_REVIEW
+            ):
+                index += 2
+                continue
+            decision_state_trace.append(state_trace[index])
+            index += 1
+        if tuple(decision_state_trace) != expected_states:
             raise AuditVerificationError(
                 "state trace does not match the persisted decision path: "
                 f"{[state.value for state in state_trace]!r}"
@@ -229,15 +248,25 @@ class AuditVerifier:
                 )
             return match
 
+        def assessment(record) -> Assessment:
+            if (
+                record.stage == ReviewStage.CROSS_REVIEW.value
+                and record.schema_version == "cross-review-v1"
+            ):
+                return CrossReviewResponse.model_validate(
+                    record.assessment_payload
+                ).assessment
+            return Assessment.model_validate(record.assessment_payload)
+
         a_record = record(ReviewerSlot.A, ReviewStage.INDEPENDENT, 1)
-        a = Assessment.model_validate(a_record.assessment_payload)
+        a = assessment(a_record)
         if result_path == "a_only":
             self._verify_a_only_expansion(session_id, snapshot, a, session)
             final = a
             expected_rounds: tuple[ComparisonRound, ...] = ()
         else:
             b_record = record(ReviewerSlot.B, ReviewStage.INDEPENDENT, 1)
-            b = Assessment.model_validate(b_record.assessment_payload)
+            b = assessment(b_record)
             initial = compare_assessments(
                 a,
                 b,
@@ -271,12 +300,8 @@ class AuditVerifier:
                 cross_b_record = record(
                     ReviewerSlot.B, ReviewStage.CROSS_REVIEW, 2
                 )
-                cross_a = Assessment.model_validate(
-                    cross_a_record.assessment_payload
-                )
-                cross_b = Assessment.model_validate(
-                    cross_b_record.assessment_payload
-                )
+                cross_a = assessment(cross_a_record)
+                cross_b = assessment(cross_b_record)
                 cross = compare_assessments(cross_a, cross_b, task_pack)
                 expected_rounds = (
                     *expected_rounds,

@@ -15,6 +15,10 @@
     {
       "id": "reviewer_c_tie_break",
       "states": ["requested", "validated", "snapshotted", "reviewer_a", "baseline_recorded", "reviewer_b", "comparing", "cross_review", "reviewer_c_independent", "reviewer_c_judging", "reviewer_adjudication", "caller_decision_required", "result_returned", "feedback_pending", "evaluated"]
+    },
+    {
+      "id": "cross_review_provider_failure",
+      "states": ["requested", "validated", "snapshotted", "reviewer_a", "baseline_recorded", "reviewer_b", "comparing", "cross_review", "cross_review_failed"]
     }
   ],
   "invariants": {
