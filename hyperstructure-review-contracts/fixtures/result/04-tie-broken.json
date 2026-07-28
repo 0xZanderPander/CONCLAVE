@@ -4,6 +4,7 @@
   "request_idempotency_key": "review_bc_glm_giveaway_2026_07_dep_a_2026-07-24T12:00Z",
   "occurrence_id": "occ_rp_meta_giveaway_r4_20260724T1200Z",
   "task_pack_ref": "marketing-ads/v1",
+  "task_pack_hash": null,
   "review_plan_ref": "rp_meta_giveaway",
   "review_plan_revision": 4,
   "request_snapshot_hash": "sha256:PLACEHOLDER_matches_request_04",
@@ -45,6 +46,35 @@
     "agreements": ["tracking is healthy", "cr_b underperforms cr_a"],
     "disagreements": ["whether the evidence supports immediate operational change"]
   },
+  "comparison_history": [
+    {
+      "stage": "independent",
+      "round": 1,
+      "distance": 0.44,
+      "weighted_distance": 0.44,
+      "tolerance": 0.25,
+      "dimension_distances": {},
+      "hard_triggers": [],
+      "merge_compatible": false,
+      "requires_cross_review": true,
+      "agreements": ["tracking is healthy"],
+      "disagreements": ["recommendation disposition"]
+    },
+    {
+      "stage": "cross_review",
+      "round": 2,
+      "distance": 0.44,
+      "weighted_distance": 0.44,
+      "tolerance": 0.25,
+      "dimension_distances": {},
+      "hard_triggers": [],
+      "merge_compatible": false,
+      "requires_cross_review": true,
+      "agreements": ["tracking is healthy"],
+      "disagreements": ["recommendation disposition"]
+    }
+  ],
+  "resolution": { "basis": "c_select_a", "decisive_stage": "cross_review" },
   "baseline": { "category": "operational_change", "changed_by_panel": false },
   "confidence": 0.78,
   "evidence_quality": "adequate",

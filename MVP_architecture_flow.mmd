@@ -4,8 +4,8 @@ flowchart TB
     PlanAPI["Versioned review-plan API"] --> Plans["Plan revisions<br/>effective_at + audit history"]
     Plans --> Scheduler["Database scheduler<br/>deployment-specific cadences"]
     Scheduler --> Queue["Leased PostgreSQL work queue<br/>retry + dead letter"]
-    Queue --> Worker["Persistent worker"]
-    Worker --> Session["Review Session"]
+    Queue --> Worker["Resumable state-driven worker"]
+    Worker --> Session["Review Session<br/>pinned plan + task-pack revisions"]
     Request --> Session
     Session <--> Ledger[("PostgreSQL Review Ledger")]
     Ops["Operational controls<br/>queue + heartbeat + stale process"] -.-> Queue
@@ -15,8 +15,8 @@ flowchart TB
     Session --> A["Reviewer A<br/>routine assessment"]
     A --> Baseline["A-only baseline"]
     Baseline --> Ledger
-    A --> Expand{"B due or<br/>triggered?"}
-    Expand -->|"No + non-material"| Resolve["Reviewer adjudication"]
+    A --> Expand{"B due, request material,<br/>recommendation material,<br/>failed goal, or audit sample?"}
+    Expand -->|"No"| Resolve["Reviewer adjudication"]
     Expand -->|"Yes"| B["Reviewer B<br/>blind first round"]
     A --> Compare["Registered task-pack comparator<br/>weights + hard triggers"]
     B --> Compare
@@ -24,10 +24,10 @@ flowchart TB
     Compare -->|"Beyond tolerance<br/>or failed goal"| Cross["One bounded cross review"]
     Cross -->|"Resolved"| Resolve
     Cross -->|"Still disagree"| CBlind["Reviewer C<br/>blind assessment"]
-    CBlind --> CJudge["Reviewer C<br/>judge A vs B"]
+    CBlind --> CJudge["Reviewer C<br/>explicit judgment:<br/>select A/B, synthesize,<br/>insufficient evidence, or escalate"]
     CJudge --> Resolve
 
-    Resolve --> Result["Structured review result"]
+    Resolve --> Result["Structured review result<br/>comparison history + resolution basis"]
     Result --> Ledger
     Ledger --> Audit["Decision-ledger verifier"]
     Ledger --> Dispatcher["Transport-neutral event dispatcher"]

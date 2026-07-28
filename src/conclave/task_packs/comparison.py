@@ -2,6 +2,7 @@ from collections.abc import Iterable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from conclave.domain.enums import ReviewStage
 from conclave.reviewers.runtime import Assessment, RecommendedAction
 from conclave.task_packs.models import (
     ComparatorDimension,
@@ -18,10 +19,6 @@ _QUALITY_ORDER = {
 _RISK_ORDER = {"low": 0, "medium": 1, "high": 2}
 _URGENCY_ORDER = {"low": 0, "normal": 1, "high": 2}
 _IMPACT_ORDER = {"negative": 0, "neutral": 1, "uncertain": 2, "positive": 3}
-_OPPOSITE_DIRECTIONS = {
-    frozenset(("increase", "decrease")),
-    frozenset(("hold", "decrease")),
-}
 _MERGE_REQUIRED = {
     ComparatorDimension.RECOMMENDATION_DISPOSITION,
     ComparatorDimension.ACTION_TYPE_DIRECTION,
@@ -42,6 +39,33 @@ class ComparisonResult(BaseModel):
     merge_compatible: bool
     requires_cross_review: bool
     merged_assessment: Assessment | None = None
+
+
+class ComparisonRound(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    stage: ReviewStage
+    round: int = Field(ge=1)
+    comparison: ComparisonResult
+
+    def public_document(self) -> dict[str, object]:
+        result = self.comparison
+        return {
+            "stage": self.stage.value,
+            "round": self.round,
+            "distance": result.distance,
+            "weighted_distance": result.weighted_distance,
+            "tolerance": result.tolerance,
+            "dimension_distances": {
+                dimension.value: value
+                for dimension, value in result.dimension_distances.items()
+            },
+            "hard_triggers": [trigger.value for trigger in result.hard_triggers],
+            "merge_compatible": result.merge_compatible,
+            "requires_cross_review": result.requires_cross_review,
+            "agreements": list(result.agreements),
+            "disagreements": list(result.disagreements),
+        }
 
 
 def _set_distance(left: set[object], right: set[object]) -> float:
@@ -146,7 +170,8 @@ def _opposite_direction(
         for action in right.actions
     }
     return any(
-        frozenset((direction, right_by_target[target])) in _OPPOSITE_DIRECTIONS
+        frozenset((direction, right_by_target[target]))
+        in {frozenset(pair) for pair in task_pack.opposite_direction_pairs}
         for target, direction in left_by_target.items()
         if target in right_by_target and direction != right_by_target[target]
     )
@@ -203,7 +228,7 @@ def _more_conservative_action(
         magnitude = left.magnitude
     else:
         magnitude = min(left.magnitude, right.magnitude)
-    urgency = min(
+    urgency = max(
         (left.urgency, right.urgency),
         key=lambda value: _URGENCY_ORDER[value],
     )
@@ -322,7 +347,9 @@ def comparison_trigger_labels(result: ComparisonResult) -> tuple[str, ...]:
     labels: list[str] = []
     if result.hard_triggers:
         labels.append("hard_conflict")
-    if result.requires_cross_review and not result.hard_triggers:
+    if not result.merge_compatible and not result.hard_triggers:
+        labels.append("merge_incompatible")
+    elif result.weighted_distance > result.tolerance and not result.hard_triggers:
         labels.append("weighted_distance")
     return tuple(labels)
 

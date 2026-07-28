@@ -19,6 +19,7 @@ from conclave.reviewers.runtime import (
     Assessment,
     FakeReviewerRuntime,
     RecommendedAction,
+    ReviewerCJudgment,
 )
 from tests.helpers import create_test_engine, create_test_repository
 
@@ -62,9 +63,23 @@ def _pause(*, material: bool = True, summary: str = "Pause the weak creative.") 
     )
 
 
-def _judgment() -> Assessment:
-    return _collect(summary="Reviewer C selected the conservative recommendation.").model_copy(
-        update={"tie_break_verdict": "select_b", "selected_slot": "B"}
+def _judgment() -> ReviewerCJudgment:
+    return ReviewerCJudgment(
+        verdict="select_b",
+        selected_slot="B",
+        summary="Reviewer C selected the conservative recommendation.",
+        confidence=0.75,
+        evidence_quality="adequate",
+    )
+
+
+def _select_a_judgment() -> ReviewerCJudgment:
+    return ReviewerCJudgment(
+        verdict="select_a",
+        selected_slot="A",
+        summary="Reviewer C selected reviewer A.",
+        confidence=0.8,
+        evidence_quality="adequate",
     )
 
 
@@ -120,7 +135,10 @@ def test_automatic_route_selects_ab_for_scheduled_b_within_tolerance() -> None:
     try:
         assert result.path == "ab_agreement"
         assert result.document["disagreement"]["distance"] == 0
-        assert result.document["disagreement"]["triggered_by"] == ["scheduled_b"]
+        assert result.document["disagreement"]["triggered_by"] == [
+            "scheduled_b",
+            "request_material",
+        ]
         assert len(runtime.calls) == 2
         events = repository.list_events(accepted.session_id)
         comparisons = [
@@ -152,9 +170,14 @@ def test_automatic_route_stops_after_cross_review_when_revisions_converge() -> N
         assert result.document["status"] == "caller_decision_required"
         assert set(result.document["disagreement"]["triggered_by"]) == {
             "scheduled_a",
-            "material_a",
-            "weighted_distance",
+            "recommendation_material_a",
+            "merge_incompatible",
         }
+        assert result.document["disagreement"]["distance"] == 0
+        assert [item["distance"] for item in result.document["comparison_history"]] == [
+            pytest.approx(0.77),
+            0,
+        ]
         assert len(runtime.calls) == 4
         comparisons = [
             event
@@ -198,6 +221,43 @@ def test_automatic_route_invokes_c_only_when_cross_review_still_disagrees() -> N
         engine.dispose()
 
 
+def test_reviewer_c_select_a_publishes_a_cross_review_assessment() -> None:
+    document = load_request_fixture("04-surviving-reviewer-conflict.json")
+    engine, repository, accepted, _runtime, _state, result = _run(
+        document,
+        {
+            (ReviewerSlot.A, ReviewStage.INDEPENDENT, 1): _pause(),
+            (ReviewerSlot.B, ReviewStage.INDEPENDENT, 1): _collect(),
+            (ReviewerSlot.A, ReviewStage.CROSS_REVIEW, 2): _pause(
+                summary="A retained the pause recommendation."
+            ),
+            (ReviewerSlot.B, ReviewStage.CROSS_REVIEW, 2): _collect(
+                summary="B retained the observation recommendation."
+            ),
+            (ReviewerSlot.C, ReviewStage.INDEPENDENT, 1): _collect(),
+            (ReviewerSlot.C, ReviewStage.JUDGING, 2): _select_a_judgment(),
+        },
+    )
+    try:
+        assert result.document["panel_metadata"]["tie_breaker"] == {
+            "verdict": "select_a",
+            "selected_slot": "A",
+            "confidence": 0.8,
+            "evidence_quality": "adequate",
+            "unresolved_claims": [],
+        }
+        assert result.document["recommendation"]["category"] == "operational_change"
+        assert result.document["recommendation"]["summary"] == (
+            "A retained the pause recommendation."
+        )
+        assert (
+            AuditVerifier(repository).verify_session(accepted.session_id).path
+            == "c_tie_broken"
+        )
+    finally:
+        engine.dispose()
+
+
 def test_failed_goal_forces_one_cross_review_but_not_reviewer_c_after_agreement() -> None:
     document = deepcopy(load_request_fixture())
     document["idempotency_key"] = "failed-goal-auto-route"
@@ -220,7 +280,10 @@ def test_failed_goal_forces_one_cross_review_but_not_reviewer_c_after_agreement(
     )
     try:
         assert result.path == "cross_review_resolved"
-        assert result.document["disagreement"]["hard_triggers"] == ["failed_goal_movement"]
+        assert result.document["disagreement"]["hard_triggers"] == []
+        assert result.document["comparison_history"][0]["hard_triggers"] == [
+            "failed_goal_movement"
+        ]
         assert "hard_conflict" in result.document["disagreement"]["triggered_by"]
         assert len(runtime.calls) == 4
     finally:
@@ -242,7 +305,10 @@ def test_invalid_task_pack_output_fails_before_completed_assessment_is_stored() 
             FakeReviewerRuntime({(ReviewerSlot.A, ReviewStage.INDEPENDENT, 1): unsafe}),
         )
 
-        with pytest.raises(ContractValidationError, match="optimization-ineligible"):
+        with pytest.raises(
+            ContractValidationError,
+            match="optimization eligibility conflicts",
+        ):
             orchestrator.run(accepted.session_id, now=datetime.now(UTC))
 
         session = repository.get_session(accepted.session_id)

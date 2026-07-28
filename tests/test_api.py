@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -158,5 +160,70 @@ async def test_local_scheduler_endpoint_creates_fixture_work() -> None:
         assert processed.status_code == 200
         assert processed.json()["state"] == "result_returned"
         assert empty.json() == {"processed": False}
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_static_bearer_authenticates_scopes_and_caller_ownership() -> None:
+    engine = create_test_engine()
+    credentials = json.dumps(
+        {
+            "fixture-caller": {
+                "token": "fixture-secret",
+                "scopes": ["reviews:submit", "reviews:read", "events:read"],
+            },
+            "other-caller": {
+                "token": "other-secret",
+                "scopes": ["reviews:read"],
+            },
+        }
+    )
+    app = create_app(
+        settings=Settings(
+            environment="production",
+            database_url="sqlite+pysqlite://",
+            caller_auth_mode="static_bearer",
+            caller_credentials_json=credentials,
+        ),
+        engine=engine,
+        seed_design_fixtures=True,
+    )
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            document = load_request_fixture()
+            document["caller"]["caller_id"] = "fixture-caller"
+            unauthenticated = await client.post("/reviews", json=document)
+            assert unauthenticated.status_code == 401
+
+            created = await client.post(
+                "/reviews",
+                json=document,
+                headers={"Authorization": "Bearer fixture-secret"},
+            )
+            assert created.status_code == 201
+            session_id = created.json()["review_session_id"]
+
+            forbidden = await client.get(
+                f"/reviews/{session_id}",
+                headers={"Authorization": "Bearer other-secret"},
+            )
+            assert forbidden.status_code == 403
+
+            allowed = await client.get(
+                f"/reviews/{session_id}",
+                headers={"Authorization": "Bearer fixture-secret"},
+            )
+            assert allowed.status_code == 200
+
+            wrong_scope = await client.post(
+                "/scheduler/tick",
+                json={"at": "2026-07-24T16:00:00Z"},
+                headers={"Authorization": "Bearer fixture-secret"},
+            )
+            assert wrong_scope.status_code == 403
     finally:
         engine.dispose()

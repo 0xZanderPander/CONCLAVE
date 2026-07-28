@@ -3,13 +3,35 @@ from conclave.reviewers.runtime import (
     Assessment,
     ProviderRegistryRuntime,
     ReviewCall,
+    ReviewerCJudgment,
 )
 
 
 class DevelopmentReviewerProvider:
     """Deterministic provider used by fixture and process tests."""
 
-    def invoke(self, call: ReviewCall) -> Assessment:
+    def invoke(self, call: ReviewCall) -> Assessment | ReviewerCJudgment:
+        if call.stage.value == "judging":
+            return ReviewerCJudgment(
+                verdict="insufficient_evidence",
+                summary="Fixture reviewer C requested more evidence.",
+                resolution_assessment=Assessment(
+                    category=RecommendationCategory.COLLECT_MORE_DATA,
+                    summary="Collect more evidence before choosing either recommendation.",
+                    claims=("The fixture does not support a decisive tie-break.",),
+                    material=False,
+                    risk="low",
+                    confidence=0.7,
+                    evidence_quality="adequate",
+                    expected_goal_impact="uncertain",
+                    tracking_health=call.snapshot["quality"]["tracking_health"],
+                    optimization_eligible=call.snapshot["quality"]["optimization_eligible"],
+                    primary_conversion=call.snapshot["sections"]["goal"]["primary_conversion"],
+                ),
+                confidence=0.7,
+                evidence_quality="adequate",
+                unresolved_claims=("The fixture does not support a decisive tie-break.",),
+            )
         return Assessment(
             category=RecommendationCategory.COLLECT_MORE_DATA,
             summary=(
@@ -20,6 +42,10 @@ class DevelopmentReviewerProvider:
             risk="low",
             confidence=0.7,
             evidence_quality="adequate",
+            expected_goal_impact="uncertain",
+            tracking_health=call.snapshot["quality"]["tracking_health"],
+            optimization_eligible=call.snapshot["quality"]["optimization_eligible"],
+            primary_conversion=call.snapshot["sections"]["goal"]["primary_conversion"],
         )
 
 

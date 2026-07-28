@@ -2,16 +2,18 @@
 
 ## Status
 
-Active MVP build. Foundation phases 1A and 1B and the transport-neutral event
-boundary are implemented and verified with sample data, local tests, and the
-dedicated Conclave Supabase project. Phase 2 is in progress: registered
-task-pack intake, eligibility checks, weighted comparison, hard triggers, and
-automatic route selection are implemented and verified locally and on the
-dedicated Conclave Supabase project.
+Active MVP build. Foundation phases 1A and 1B, the transport-neutral event
+boundary, and Phase 2 task-pack routing are implemented and verified with
+sample data, local tests, and the dedicated Conclave Supabase project.
 
 The normal worker now selects A-only, A/B agreement, cross-review, or reviewer C
-from the request trigger, reviewer-A materiality, weighted disagreement, and
-hard triggers. The explicit fixture-path selector remains a regression harness.
+from request and recommendation materiality, scheduled and failed-goal
+triggers, weighted disagreement, merge compatibility, and hard triggers. The
+explicit fixture-path selector remains a regression harness.
+
+Every new session pins an immutable task-pack revision. Automatic reviews can
+resume from any legal partial state, and the decision verifier recomputes the
+route from stored reviewer outputs rather than trusting recorded labels.
 
 Conclave does not depend on Marketing OS, and Marketing OS does not depend on
 Conclave.
@@ -71,10 +73,10 @@ Reviewer-performance evaluation
 ```
 
 Reviewer A is the routine reviewer. Reviewer B is the independent audit
-reviewer and joins on its own cadence, on a material A recommendation, when
-prior outcome feedback says the goal did not move, or through a configured
-non-material audit sample. Reviewer C has no cadence and is invoked only when
-disagreement survives one bounded cross-review round.
+reviewer and joins on its own cadence, on configured request or recommendation
+materiality, when prior outcome feedback says the goal did not move, or through
+a configured non-material audit sample. Reviewer C has no cadence and is
+invoked only when disagreement survives one bounded cross-review round.
 
 During Conclave development, the caller and evidence package are simulated with
 sample ad-performance fixtures. No live Marketing data is required.
@@ -293,11 +295,14 @@ Reviewer C is a constrained judge rather than a simple third vote:
    A or B content.
 2. C then receives A and B's final claims, justifications, and structured
    disagreement.
-3. C selects A, selects B, synthesizes a schema-valid recommendation, declares
-   insufficient evidence, or escalates.
+3. C returns a separate required judgment: select A, select B, synthesize a
+   schema-valid recommendation, declare insufficient evidence, or escalate.
+4. Selecting A or B publishes that reviewer's final cross-review assessment.
+   Synthesis and safe fallback verdicts must include an explicit valid
+   assessment. There is no inferred or default verdict.
 
-C's output is the panel recommendation. It is never an executed action. Any
-result that used C is caller-decision-required in the MVP.
+C's resolved output is the panel recommendation. It is never an executed
+action. Any result that used C is caller-decision-required in the MVP.
 
 A future caller records any authoritative approval, rejection, amendment,
 action, and outcome.
@@ -435,10 +440,12 @@ Completed foundation:
 
 Next:
 
-1. review the Phase 2 acceptance gate and malformed-input coverage
-2. decide caller authentication before any non-local request endpoint
-3. then begin real reviewer-provider selection, within approved timeout, cost,
-   retention, and authentication limits
+1. select and implement the first real reviewer-provider adapter
+2. add provider-specific timeout, token, latency, and cost accounting
+3. complete the Phase 3 reviewer-A and baseline acceptance gate
+
+Non-local API mode requires explicit bearer authentication and caller scopes.
+Local fixture mode remains available only in development and test.
 
 See [MVP Build Roadmap](MVP_build_roadmap.md) for acceptance gates and the full
 checklist.

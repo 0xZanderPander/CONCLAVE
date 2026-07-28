@@ -13,6 +13,7 @@ from conclave.reviewers.runtime import (
     FakeReviewerRuntime,
     ProviderRegistryRuntime,
     ReviewCall,
+    ReviewerCJudgment,
     ReviewerProviderExhaustedError,
     UnknownReviewerProviderError,
 )
@@ -112,3 +113,22 @@ def test_provider_registry_reports_exhausted_provider_without_leaking_response()
 
     with pytest.raises(ReviewerProviderExhaustedError, match="after 2 attempts"):
         runtime.review(_call())
+
+
+def test_reviewer_c_judgment_requires_an_explicit_consistent_verdict() -> None:
+    with pytest.raises(ValueError, match="selected_slot=A"):
+        ReviewerCJudgment(
+            verdict="select_a",
+            selected_slot="B",
+            summary="Contradictory selection.",
+            confidence=0.8,
+            evidence_quality="adequate",
+        )
+
+    with pytest.raises(ValueError, match="requires a resolution assessment"):
+        ReviewerCJudgment(
+            verdict="synthesize",
+            summary="No synthesis supplied.",
+            confidence=0.8,
+            evidence_quality="adequate",
+        )

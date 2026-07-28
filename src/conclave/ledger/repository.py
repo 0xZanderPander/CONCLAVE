@@ -35,6 +35,7 @@ from conclave.ledger.models import (
     ReviewSessionRecord,
     RuntimeProcessRecord,
     SchedulerWorkItemRecord,
+    TaskPackRevisionRecord,
 )
 from conclave.orchestration.state_machine import validate_transition
 from conclave.plans.models import ReviewPlanRevision
@@ -625,7 +626,56 @@ class LedgerRepository:
                 )
             )
 
-    def create_session(self, identity: RequestIdentity) -> ReviewSessionRecord:
+    def register_task_pack_revision(
+        self,
+        *,
+        task_pack_ref: str,
+        content_hash: str,
+        document: dict[str, Any],
+    ) -> TaskPackRevisionRecord:
+        if canonical_hash(document) != content_hash:
+            raise LedgerConflictError("task-pack content hash is invalid")
+        with self._sessions.begin() as db:
+            by_ref = db.scalar(
+                select(TaskPackRevisionRecord).where(
+                    TaskPackRevisionRecord.task_pack_ref == task_pack_ref
+                )
+            )
+            if by_ref is not None:
+                if by_ref.content_hash != content_hash or by_ref.document != document:
+                    raise LedgerConflictError(
+                        "task-pack reference cannot be reused with different content"
+                    )
+                return by_ref
+            by_hash = db.get(TaskPackRevisionRecord, content_hash)
+            if by_hash is not None:
+                if by_hash.task_pack_ref != task_pack_ref or by_hash.document != document:
+                    raise LedgerConflictError(
+                        "task-pack hash cannot be reused with different content"
+                    )
+                return by_hash
+            record = TaskPackRevisionRecord(
+                content_hash=content_hash,
+                task_pack_ref=task_pack_ref,
+                document=document,
+            )
+            db.add(record)
+            db.flush()
+            return record
+
+    def get_task_pack_revision(
+        self,
+        content_hash: str,
+    ) -> TaskPackRevisionRecord | None:
+        with self._sessions() as db:
+            return db.get(TaskPackRevisionRecord, content_hash)
+
+    def create_session(
+        self,
+        identity: RequestIdentity,
+        *,
+        task_pack_hash: str | None = None,
+    ) -> ReviewSessionRecord:
         session_id = deterministic_id(
             "rs",
             identity.caller_id,
@@ -638,6 +688,10 @@ class LedgerRepository:
             if existing is not None:
                 if existing.idempotency_key != identity.idempotency_key:
                     raise LedgerConflictError("session identity reused with a new idempotency key")
+                if task_pack_hash is not None and existing.task_pack_hash != task_pack_hash:
+                    raise LedgerConflictError(
+                        "session identity reused with a new task-pack revision"
+                    )
                 return existing
             record = ReviewSessionRecord(
                 session_id=session_id,
@@ -645,6 +699,7 @@ class LedgerRepository:
                 occurrence_id=identity.trigger.occurrence_id,
                 idempotency_key=identity.idempotency_key,
                 evidence_version=identity.evidence_version,
+                task_pack_hash=task_pack_hash,
                 plan_id=identity.plan_id,
                 plan_revision=identity.plan_revision,
                 current_state=ReviewState.REQUESTED.value,
@@ -665,6 +720,7 @@ class LedgerRepository:
                         "plan_id": identity.plan_id,
                         "plan_revision": identity.plan_revision,
                         "evidence_version": identity.evidence_version,
+                        "task_pack_hash": task_pack_hash,
                     },
                     correlation_id=session_id,
                 ),
@@ -999,14 +1055,47 @@ class LedgerRepository:
         dimension_distances: dict[str, float],
         hard_triggers: tuple[str, ...],
         requires_cross_review: bool,
+        merge_compatible: bool,
+        left_invocation_id: str,
+        right_invocation_id: str,
+        task_pack_hash: str,
     ) -> DomainEvent:
         summary = (
             "Reviewer comparison requires bounded cross review."
             if requires_cross_review
             else "Reviewer comparison completed within tolerance."
         )
-        return self.append_domain_event(
-            PendingDomainEvent(
+        payload = {
+            "distance": distance,
+            "weighted_distance": weighted_distance,
+            "tolerance": tolerance,
+            "dimension_distances": dimension_distances,
+            "hard_triggers": list(hard_triggers),
+            "merge_compatible": merge_compatible,
+            "requires_cross_review": requires_cross_review,
+            "left_invocation_id": left_invocation_id,
+            "right_invocation_id": right_invocation_id,
+            "task_pack_hash": task_pack_hash,
+        }
+        with self._sessions.begin() as db:
+            existing = db.scalar(
+                select(AuditEventRecord).where(
+                    AuditEventRecord.entity_type == "review_session",
+                    AuditEventRecord.entity_id == session_id,
+                    AuditEventRecord.event_type == DomainEventType.COMPARISON_COMPLETED.value,
+                    AuditEventRecord.stage == stage.value,
+                    AuditEventRecord.round_number == round_number,
+                )
+            )
+            if existing is not None:
+                if existing.event_payload != payload:
+                    raise LedgerConflictError(
+                        "comparison is immutable for a review stage and round"
+                    )
+                return self._to_domain_event(existing)
+            record = self._persist_event(
+                db,
+                PendingDomainEvent(
                 event_type=DomainEventType.COMPARISON_COMPLETED,
                 stream_type="review_session",
                 stream_id=session_id,
@@ -1015,17 +1104,12 @@ class LedgerRepository:
                 stage=stage,
                 round_number=round_number,
                 summary=summary,
-                payload={
-                    "distance": distance,
-                    "weighted_distance": weighted_distance,
-                    "tolerance": tolerance,
-                    "dimension_distances": dimension_distances,
-                    "hard_triggers": list(hard_triggers),
-                    "requires_cross_review": requires_cross_review,
-                },
+                payload=payload,
                 correlation_id=session_id,
+                ),
             )
-        )
+            db.flush()
+            return self._to_domain_event(record)
 
     def get_session(self, session_id: str) -> ReviewSessionRecord | None:
         with self._sessions() as db:

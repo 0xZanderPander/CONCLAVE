@@ -1,10 +1,17 @@
 from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Engine, text
 
+from conclave.api.auth import (
+    CallerAuthenticator,
+    CallerPrincipal,
+    LocalFixtureAuthenticator,
+    StaticBearerAuthenticator,
+    scope_dependency,
+)
 from conclave.auditing.verification import AuditVerificationError, AuditVerifier
 from conclave.config import Settings
 from conclave.contracts.validation import ContractValidationError
@@ -53,6 +60,7 @@ def create_app(
     engine: Engine | None = None,
     initialize_schema: bool = False,
     seed_design_fixtures: bool = False,
+    authenticator: CallerAuthenticator | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_environment()
     engine = engine or create_database_engine(settings)
@@ -72,6 +80,17 @@ def create_app(
     orchestrator = ReviewOrchestrator(repository, DevelopmentReviewerRuntime())
     worker = FixtureWorker(repository, intake, orchestrator)
     auditor = AuditVerifier(repository)
+    if authenticator is None:
+        authenticator = (
+            StaticBearerAuthenticator.from_json(settings.caller_credentials_json)
+            if settings.caller_auth_mode == "static_bearer"
+            and settings.caller_credentials_json is not None
+            else LocalFixtureAuthenticator()
+        )
+    submit_dependency = scope_dependency(authenticator, "reviews:submit")
+    read_dependency = scope_dependency(authenticator, "reviews:read")
+    events_dependency = scope_dependency(authenticator, "events:read")
+    operations_dependency = scope_dependency(authenticator, "operations:manage")
 
     app = FastAPI(
         title="Conclave",
@@ -85,6 +104,16 @@ def create_app(
     app.state.orchestrator = orchestrator
     app.state.worker = worker
     app.state.auditor = auditor
+    app.state.authenticator = authenticator
+
+    def authorize_session(principal: CallerPrincipal, session_id: str) -> None:
+        if principal.caller_id is None:
+            return
+        record = repository.get_session(session_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="review session not found")
+        if record.caller_id != principal.caller_id:
+            raise HTTPException(status_code=403, detail="review session belongs to another caller")
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -100,7 +129,18 @@ def create_app(
         return {"status": "ready"}
 
     @app.post("/reviews", status_code=201)
-    def create_review(document: dict[str, Any]) -> dict[str, Any]:
+    def create_review(
+        document: dict[str, Any],
+        principal: Annotated[CallerPrincipal, Depends(submit_dependency)],
+    ) -> dict[str, Any]:
+        if (
+            principal.caller_id is not None
+            and document.get("caller", {}).get("caller_id") != principal.caller_id
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="request caller does not match the authenticated principal",
+            )
         try:
             result = intake.accept(document)
         except ContractValidationError as exc:
@@ -112,6 +152,7 @@ def create_app(
         return {
             "review_session_id": result.session_id,
             "snapshot_hash": result.snapshot_hash,
+            "task_pack_hash": result.task_pack_hash,
             "state": result.state.value,
             "optimization_eligible": result.optimization_eligible,
             "material": result.material,
@@ -119,7 +160,11 @@ def create_app(
         }
 
     @app.get("/reviews/{session_id}")
-    def get_review(session_id: str) -> dict[str, Any]:
+    def get_review(
+        session_id: str,
+        principal: Annotated[CallerPrincipal, Depends(read_dependency)],
+    ) -> dict[str, Any]:
+        authorize_session(principal, session_id)
         record = repository.get_session(session_id)
         if record is None:
             raise HTTPException(status_code=404, detail="review session not found")
@@ -135,7 +180,12 @@ def create_app(
         }
 
     @app.post("/reviews/{session_id}/run")
-    def run_review(session_id: str, request: RunFixtureRequest) -> dict[str, str]:
+    def run_review(
+        session_id: str,
+        request: RunFixtureRequest,
+        principal: Annotated[CallerPrincipal, Depends(submit_dependency)],
+    ) -> dict[str, str]:
+        authorize_session(principal, session_id)
         try:
             state = orchestrator.run_fixture_path(session_id, request.path)
         except LookupError as exc:
@@ -145,7 +195,11 @@ def create_app(
         return {"review_session_id": session_id, "state": state.value}
 
     @app.post("/reviews/{session_id}/run-auto")
-    def run_review_automatically(session_id: str) -> dict[str, str]:
+    def run_review_automatically(
+        session_id: str,
+        principal: Annotated[CallerPrincipal, Depends(submit_dependency)],
+    ) -> dict[str, str]:
+        authorize_session(principal, session_id)
         try:
             state = orchestrator.run(session_id)
         except LookupError as exc:
@@ -155,14 +209,22 @@ def create_app(
         return {"review_session_id": session_id, "state": state.value}
 
     @app.get("/reviews/{session_id}/result")
-    def get_review_result(session_id: str) -> dict[str, Any]:
+    def get_review_result(
+        session_id: str,
+        principal: Annotated[CallerPrincipal, Depends(read_dependency)],
+    ) -> dict[str, Any]:
+        authorize_session(principal, session_id)
         result = repository.get_result(session_id)
         if result is None:
             raise HTTPException(status_code=404, detail="review result not found")
         return result.document
 
     @app.get("/reviews/{session_id}/audit")
-    def verify_review_audit(session_id: str) -> dict[str, Any]:
+    def verify_review_audit(
+        session_id: str,
+        principal: Annotated[CallerPrincipal, Depends(read_dependency)],
+    ) -> dict[str, Any]:
+        authorize_session(principal, session_id)
         try:
             verification = auditor.verify_session(session_id)
         except AuditVerificationError as exc:
@@ -179,9 +241,11 @@ def create_app(
     @app.get("/review-sessions/{session_id}/events")
     def get_review_events(
         session_id: str,
+        principal: Annotated[CallerPrincipal, Depends(events_dependency)],
         after_sequence: int = Query(default=0, ge=0),
         limit: int = Query(default=100, ge=1, le=200),
     ) -> dict[str, Any]:
+        authorize_session(principal, session_id)
         if repository.get_session(session_id) is None:
             raise HTTPException(status_code=404, detail="review session not found")
         events = repository.list_events(
@@ -197,7 +261,10 @@ def create_app(
         }
 
     @app.post("/scheduler/tick")
-    def scheduler_tick(request: SchedulerTickRequest) -> dict[str, Any]:
+    def scheduler_tick(
+        request: SchedulerTickRequest,
+        _principal: Annotated[CallerPrincipal, Depends(operations_dependency)],
+    ) -> dict[str, Any]:
         work = scheduler.tick(request.at)
         return {
             "scheduled": [
@@ -215,6 +282,7 @@ def create_app(
 
     @app.post("/worker/run-once")
     def worker_run_once(
+        _principal: Annotated[CallerPrincipal, Depends(operations_dependency)],
         worker_id: str = "local-worker",
         path: FixturePath | None = None,
     ) -> dict[str, Any]:
@@ -236,7 +304,9 @@ def create_app(
         }
 
     @app.get("/operations/status")
-    def operations_status() -> dict[str, Any]:
+    def operations_status(
+        _principal: Annotated[CallerPrincipal, Depends(operations_dependency)],
+    ) -> dict[str, Any]:
         now = datetime.now(UTC)
         metrics = repository.queue_metrics(now)
         stale_processes = repository.stale_processes(
@@ -267,6 +337,7 @@ def create_app(
     def retry_work_item(
         work_item_id: str,
         request: RetryWorkRequest,
+        _principal: Annotated[CallerPrincipal, Depends(operations_dependency)],
     ) -> dict[str, Any]:
         try:
             item = repository.retry_dead_letter(
@@ -284,6 +355,7 @@ def create_app(
     def cancel_work_item(
         work_item_id: str,
         request: CancelWorkRequest,
+        _principal: Annotated[CallerPrincipal, Depends(operations_dependency)],
     ) -> dict[str, Any]:
         try:
             item = repository.cancel_work_item(

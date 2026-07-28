@@ -2,13 +2,14 @@
 
 ## Status
 
-Active implementation roadmap for the independent Conclave MVP. Phases 1A and
-1B and the transport-neutral event boundary are complete. Phase 2 sample
-task-pack intake and automatic comparator routing are in progress.
+Active implementation roadmap for the independent Conclave MVP. Phases 1A,
+1B, the transport-neutral event boundary, and Phase 2 sample task-pack routing
+are complete.
 
-The normal worker now routes from request triggers, reviewer-A materiality,
-weighted disagreement, and hard triggers. The Phase 1B fixture-path selector
-remains available only for deterministic protocol regression tests.
+The normal worker now routes from request and recommendation materiality,
+scheduled and failed-goal triggers, weighted disagreement, merge compatibility,
+and hard triggers. The Phase 1B fixture-path selector remains available only
+for deterministic protocol regression tests.
 
 Marketing OS is built separately and does not depend on Conclave.
 
@@ -196,7 +197,7 @@ without changing the Conclave review protocol.
 - Events are readable without a model provider or external service.
 - The audit ledger remains the only canonical event history.
 
-## Phase 2: Sample Ad-Performance Task-Pack Intake — In Progress
+## Phase 2: Sample Ad-Performance Task-Pack Intake — Complete
 
 ### Built
 
@@ -205,43 +206,56 @@ without changing the Conclave review protocol.
 - declared data-classification checks
 - freshness, partial-data, tracking-health, and evidence-quality field
   validation
-- domain-supplied materiality and allowed-action validation
+- separate deterministic request and recommendation materiality
+- deployment-editable panel levers for both materiality types
+- allowed-action and recommendation validation
 - local `marketing-ads/v1` sample action ontology and comparator profile
+- immutable task-pack revision hash pinned to every new session
 - weighted distance, hard-trigger, and merge-rule validation
-- stored fixtures for deterministic tests
+- assessment-pair golden fixtures covering every comparator dimension, hard
+  triggers, merge compatibility, and conservative timing
 - automatic route selection from materiality, weighted A/B distance, hard
   triggers, and failed-goal input
-- comparison decisions recorded as typed events
+- comparison decisions recorded as typed events with input invocation IDs and
+  the pinned task-pack hash
+- initial and post-cross-review comparison history in structured results
 - deterministic conservative merge for within-tolerance agreement
 - automatic worker mode with explicit fixture paths retained for tests
-- golden local tests for A-only, A/B, cross-review resolution, reviewer C, and
-  failed-goal routing
+- a separate required reviewer-C judgment contract with no inferred verdict
+- selected A/B recommendation identity preserved in the final result
+- state-driven, idempotent recovery from every legal partial review state
+- route-aware audit verification that recomputes comparisons and final choice
+- scoped static-bearer authentication for non-local API mode
+- golden local tests for A-only, A/B, cross-review resolution, every reviewer-C
+  selection behavior, failed-goal routing, and interruption recovery
 - automatic scheduled-B routing and decision-ledger verification on the
   dedicated Conclave Supabase project
-
-### Remaining
-
-- authenticated request endpoint before any non-local deployment
-- final Phase 2 acceptance review
+- migration `20260726_0008` for immutable task-pack revisions
 
 ### Exit Gate
 
 - The same package always produces the same stored snapshot hash.
+- Every new session pins immutable task-pack semantics by content hash.
 - Conclave cannot fetch or enrich live Marketing evidence.
-- Invalid, stale, or tracking-unhealthy packages enter explicit non-optimization
-  states.
+- Malformed input is rejected before a session is created.
+- Stale evidence enters `stale_or_ineligible_evidence`.
+- Tracking-unhealthy, partial, or insufficient evidence remains reviewable for
+  diagnosis but is explicitly blocked from optimization.
 - No fixture contains platform credentials or raw personal content.
 - Comparator configuration matches the registered task-pack version.
+- Reviewer C cannot publish an inferred verdict or a recommendation other than
+  the selected or explicitly synthesized assessment.
+- Interrupted automatic reviews resume without duplicate durable decisions.
+- Non-local API startup fails without configured caller authentication.
 
 ## Phase 3: Reviewer A and Baseline
 
 ### Build
 
-- `ReviewerRuntime`
-- first provider adapter
+- first production provider adapter behind the existing `ReviewerRuntime`
 - versioned reviewer-A role and stance
-- assessment, claim, recommendation, and experiment output validation
-- single-reviewer baseline
+- provider-specific assessment generation against the existing validated
+  assessment, claim, recommendation, and experiment contract
 - timeout, retry, token, latency, and cost accounting
 
 ### Exit Gate
@@ -270,8 +284,8 @@ without changing the Conclave review protocol.
 - Reviewer B cannot see reviewer-A content before storing its own assessment.
 - Known category, direction, magnitude, quality, and integrity conflicts are
   detected.
-- A-only, scheduled-B, material-A, failed-goal, and audit-sample paths invoke
-  exactly the intended reviewer slots.
+- A-only, scheduled-B, request-material, recommendation-material, failed-goal,
+  and audit-sample paths invoke exactly the intended reviewer slots.
 - Weighted comparison fixtures produce the expected distances and hard triggers.
 - A provider failure never silently substitutes a reviewer.
 
@@ -452,8 +466,10 @@ Its scope is limited to optional ad-performance review:
 - Conclave receives no Meta credential and performs no platform action.
 - The draft future contracts must be reviewed again before any live connection.
 
-## Immediate Next Build: Phase 2 Intake
+## Immediate Next Build: Phase 3 Reviewer A and Baseline
 
-1. Confirm the full malformed-input and output-policy test matrix.
-2. Review the Phase 2 exit gate.
-3. Decide authentication, retention, and provider limits before Phase 3.
+1. Select the first real reviewer-provider adapter.
+2. Approve provider timeout, retry, token, latency, cost, and retention limits.
+3. Implement provider-specific accounting without changing the common reviewer
+   or task-pack contracts.
+4. Run the Phase 3 reviewer-A and baseline acceptance gate.

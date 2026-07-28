@@ -38,7 +38,11 @@ class SlotSchedule(BaseModel):
 class PanelExpansion(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    # Retained so stored Phase 1 plan revisions remain readable. Automatic
+    # routing uses the two deterministic materiality levers below.
     invoke_b_on_a_material: bool = True
+    invoke_b_on_request_material: bool = True
+    invoke_b_on_recommendation_material: bool = True
     invoke_b_on_failed_goal: bool = True
     nonmaterial_audit_sample_rate: float = Field(default=0.0, ge=0, le=1)
 

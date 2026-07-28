@@ -1,6 +1,6 @@
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 DEFAULT_ENVIRONMENT = "development"
 DEFAULT_DATABASE_URL = "postgresql+psycopg://conclave:conclave@localhost:5432/conclave"
@@ -29,11 +29,28 @@ class Settings:
     database_max_overflow: int = 5
     database_pool_timeout_seconds: int = 10
     database_pool_recycle_seconds: int = 1800
+    caller_auth_mode: str = "local_fixture"
+    caller_credentials_json: str | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.caller_auth_mode not in {"local_fixture", "static_bearer"}:
+            raise ValueError("CONCLAVE_CALLER_AUTH_MODE is invalid")
+        if (
+            self.environment not in {"development", "test"}
+            and self.caller_auth_mode == "local_fixture"
+        ):
+            raise ValueError(
+                "non-local Conclave deployments require caller authentication"
+            )
+        if self.caller_auth_mode == "static_bearer" and not self.caller_credentials_json:
+            raise ValueError(
+                "static bearer authentication requires caller credentials"
+            )
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str] | None = None) -> "Settings":
         values = environment if environment is not None else os.environ
-        return cls(
+        settings = cls(
             environment=values.get("CONCLAVE_ENVIRONMENT", DEFAULT_ENVIRONMENT),
             database_url=values.get("CONCLAVE_DATABASE_URL", DEFAULT_DATABASE_URL),
             log_level=values.get("CONCLAVE_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper(),
@@ -53,4 +70,10 @@ class Settings:
             database_pool_recycle_seconds=_integer(
                 values, "CONCLAVE_DATABASE_POOL_RECYCLE_SECONDS", 1800
             ),
+            caller_auth_mode=values.get(
+                "CONCLAVE_CALLER_AUTH_MODE",
+                "local_fixture",
+            ),
+            caller_credentials_json=values.get("CONCLAVE_CALLER_CREDENTIALS_JSON"),
         )
+        return settings

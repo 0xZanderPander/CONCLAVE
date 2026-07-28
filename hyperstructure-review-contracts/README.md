@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft `0.2.0` future integration design for optional ad-performance review.
+Draft `0.3.0` future integration design for optional ad-performance review.
 
 This package belongs to Conclave's current design and test work. Conclave uses
 it with sample data and fixtures. Marketing OS does not depend on it and does
@@ -67,6 +67,11 @@ not a Conclave feature request.
 - **Conclave** uses the schemas and fixtures as local golden tests.
 - Conclave registers `marketing-ads/v1` as its first local task pack and
   requires submitted comparator and action-ontology references to match it.
+- Each review pins the resolved task-pack content hash. Reusing one task-pack
+  reference with different semantics is rejected.
+- Results include comparison history and the decisive resolution basis.
+- Reviewer C uses a separate judgment contract rather than overloading a normal
+  assessment.
 - **Marketing OS has no current work or dependency here.**
 
 If a future connection is approved, both sides may then pin the same reviewed

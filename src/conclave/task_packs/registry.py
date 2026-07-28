@@ -8,32 +8,13 @@ from pydantic import ValidationError
 from conclave.contracts.validation import ContractValidationError
 from conclave.domain.enums import RecommendationCategory
 from conclave.paths import contracts_root
-from conclave.reviewers.runtime import Assessment
+from conclave.reviewers.runtime import Assessment, ReviewerCJudgment
 from conclave.task_packs.models import (
     ComparatorProfile,
     RequestEligibility,
     RequestMateriality,
     TaskPack,
 )
-
-_MARKETING_ACTION_DIRECTIONS = {
-    "pause_creative": "decrease",
-    "retain_creative": "hold",
-    "collect_more_data": "observe",
-    "diagnose_tracking": "diagnose",
-    "freeze_scope": "freeze",
-    "propose_experiment": "experiment",
-    "budget_increase": "increase",
-    "budget_decrease": "decrease",
-    "creative_rotation": "change",
-    "audience_change": "change",
-}
-
-_NON_OPTIMIZATION_ACTIONS = {
-    "collect_more_data",
-    "diagnose_tracking",
-    "freeze_scope",
-}
 
 
 class TaskPackRegistry:
@@ -48,6 +29,16 @@ class TaskPackRegistry:
         except KeyError as exc:
             raise ContractValidationError(f"unknown task_pack_ref {task_pack_ref!r}") from exc
 
+    def get_by_hash(self, content_hash: str) -> TaskPack:
+        matches = [
+            task_pack
+            for task_pack in self._task_packs.values()
+            if task_pack.content_hash == content_hash
+        ]
+        if not matches:
+            raise ContractValidationError(f"unknown task-pack hash {content_hash!r}")
+        return matches[0]
+
     def validate_request(self, document: dict[str, Any]) -> RequestEligibility:
         task_pack = self.get(document["task_pack_ref"])
         self._validate_contract_binding(task_pack, document)
@@ -57,8 +48,23 @@ class TaskPackRegistry:
         self,
         document: dict[str, Any],
         assessment: Assessment,
+        *,
+        task_pack: TaskPack | None = None,
     ) -> None:
-        task_pack = self.get(document["task_pack_ref"])
+        task_pack = task_pack or self.get(document["task_pack_ref"])
+        missing = [
+            name
+            for name in task_pack.required_assessment_fields
+            if getattr(assessment, name) is None
+        ]
+        if missing:
+            raise ContractValidationError(
+                f"assessment is missing required task-pack fields: {sorted(missing)!r}"
+            )
+        if assessment.optimization_eligible != document["quality"]["optimization_eligible"]:
+            raise ContractValidationError(
+                "assessment optimization eligibility conflicts with the request"
+            )
         allowed_recommendations = {
             RecommendationCategory(value) for value in document["allowed_recommendations"]
         }
@@ -127,6 +133,66 @@ class TaskPackRegistry:
                     raise ContractValidationError(
                         f"budget change {action.magnitude} exceeds request limit {max_change}"
                     )
+        expected_material = self.recommendation_materiality(
+            document,
+            assessment,
+            task_pack=task_pack,
+        )
+        if assessment.material != expected_material:
+            raise ContractValidationError(
+                "assessment materiality conflicts with deterministic task-pack rules"
+            )
+
+    def validate_judgment(
+        self,
+        document: dict[str, Any],
+        judgment: ReviewerCJudgment,
+        *,
+        task_pack: TaskPack | None = None,
+    ) -> None:
+        task_pack = task_pack or self.get(document["task_pack_ref"])
+        if judgment.resolution_assessment is None:
+            return
+        self.validate_assessment(
+            document,
+            judgment.resolution_assessment,
+            task_pack=task_pack,
+        )
+        if judgment.verdict in {"insufficient_evidence", "escalate"}:
+            assessment = judgment.resolution_assessment
+            if assessment.category not in {
+                RecommendationCategory.COLLECT_MORE_DATA,
+                RecommendationCategory.FREEZE,
+                RecommendationCategory.TRACKING_OR_DATA_PROBLEM,
+            }:
+                raise ContractValidationError(
+                    f"{judgment.verdict} requires a safe non-optimization recommendation"
+                )
+            if assessment.actions and any(
+                action.type
+                not in task_pack.non_optimization_action_types
+                for action in assessment.actions
+            ):
+                raise ContractValidationError(
+                    f"{judgment.verdict} cannot include optimization actions"
+                )
+
+    def recommendation_materiality(
+        self,
+        document: dict[str, Any],
+        assessment: Assessment,
+        *,
+        task_pack: TaskPack | None = None,
+    ) -> bool:
+        task_pack = task_pack or self.get(document["task_pack_ref"])
+        return bool(
+            assessment.category in task_pack.material_recommendation_categories
+            or assessment.risk in task_pack.material_risk_levels
+            or any(
+                action.type in task_pack.material_action_types
+                for action in assessment.actions
+            )
+        )
 
     @staticmethod
     def _validate_contract_binding(
@@ -284,15 +350,31 @@ def _marketing_ads_task_pack() -> TaskPack:
             "hard_triggers": raw_profile["hard_triggers"],
         }
     )
+    ontology = raw_profile["action_ontology"]
+    materiality = raw_profile["recommendation_materiality"]
+    directions = ontology["directions"]
     return TaskPack(
         task_pack_ref="marketing-ads/v1",
         action_profile="marketing-ads/v1",
         allowed_recommendations=frozenset(RecommendationCategory),
-        allowed_action_types=frozenset(_MARKETING_ACTION_DIRECTIONS),
-        non_optimization_action_types=frozenset(_NON_OPTIMIZATION_ACTIONS),
-        action_directions=_MARKETING_ACTION_DIRECTIONS,
+        allowed_action_types=frozenset(directions),
+        non_optimization_action_types=frozenset(
+            ontology["non_optimization_action_types"]
+        ),
+        action_directions=directions,
+        opposite_direction_pairs=tuple(
+            tuple(pair) for pair in ontology["opposite_direction_pairs"]
+        ),
         comparator=comparator,
-        max_evidence_age_hours=24,
+        max_evidence_age_hours=raw_profile["max_evidence_age_hours"],
+        required_assessment_fields=frozenset(
+            raw_profile["assessment_contract"]["required_fields"]
+        ),
+        material_recommendation_categories=frozenset(
+            RecommendationCategory(value) for value in materiality["categories"]
+        ),
+        material_action_types=frozenset(materiality["action_types"]),
+        material_risk_levels=frozenset(materiality["risk_levels"]),
     )
 
 

@@ -7,7 +7,7 @@ This document creates no Marketing OS requirement. Marketing OS may be built and
 operated without Conclave. Two-sided conformance applies only if an optional
 future connection is separately approved.
 
-The current contract-set version is `0.2.0`. It is a pre-release contract:
+The current contract-set version is `0.3.0`. It is a pre-release contract:
 fixtures may be corrected during Phase 0, but every correction must bump
 `VERSION` and be recorded in the Conclave documentation audit log. Once the
 contract reaches `1.0.0`, shipped fixtures are immutable.
@@ -38,7 +38,12 @@ before a live connection:
    experiment structure; and
 9. a `tie_broken` result includes C's independent invocation before its judging
    invocation, a non-null tie-break record, and
-   `status=caller_decision_required`.
+   `status=caller_decision_required`;
+10. every automatic result identifies the immutable task-pack content hash,
+    includes each decisive comparison round, and states its resolution basis;
+    and
+11. reviewer C's judgment explicitly selects A or B, or supplies a separately
+    valid assessment for synthesis, insufficient evidence, or escalation.
 
 ## Current Conclave checks
 
@@ -59,6 +64,12 @@ without contacting Marketing OS or any production system.
 5. **Honors reviewer-C ordering.** C never sees A/B content before storing its
    own assessment; its judging invocation may then compare C's assessment with
    A/B's final claims and justifications.
+6. **Pins task-pack meaning.** Every new automatic review stores the content
+   hash of the exact task-pack document used for eligibility, materiality,
+   comparison, and result validation.
+7. **Reconstructs the route.** Audit validation recomputes comparison rounds,
+   expansion eligibility, C selection, and the published recommendation from
+   stored inputs rather than trusting route labels.
 
 ## Future caller checks
 
@@ -100,8 +111,9 @@ fixture in place: add a new file and row.
 
 ## Comparator vectors
 
-`fixtures/comparator/marketing-v1-cases.json` is the golden suite for
-`profiles/marketing-ads.v1.json`.
+`fixtures/comparator/marketing-v1-cases.json` and
+`fixtures/comparator/marketing-v1-assessment-pairs.json` are the golden suites
+for `profiles/marketing-ads.v1.json`.
 
 - With no hard trigger, expected distance is the sum of
   `dimension_distance * dimension_weight`.
@@ -110,6 +122,9 @@ fixture in place: add a new file and row.
   distance `1.0`, regardless of the weighted sum.
 - A within-tolerance merge may only occur when recommendation disposition,
   action direction, and target scope match.
+- Assessment-pair cases exercise all weighted dimensions, hard triggers,
+  merge incompatibility, and conservative timing with complete valid reviewer
+  outputs.
 
 ## Conclave-only design fixtures
 

@@ -54,6 +54,7 @@
     "request_idempotency_key",
     "occurrence_id",
     "task_pack_ref",
+    "task_pack_hash",
     "review_plan_ref",
     "review_plan_revision",
     "request_snapshot_hash",
@@ -62,6 +63,8 @@
     "recommendation",
     "claims",
     "disagreement",
+    "comparison_history",
+    "resolution",
     "baseline",
     "confidence",
     "evidence_quality",
@@ -73,6 +76,7 @@
     "request_idempotency_key": { "type": "string" },
     "occurrence_id": { "type": "string" },
     "task_pack_ref": { "type": "string" },
+    "task_pack_hash": { "type": ["string", "null"] },
     "review_plan_ref": { "type": "string" },
     "review_plan_revision": { "type": "integer", "minimum": 1 },
     "request_snapshot_hash": {
@@ -167,13 +171,89 @@
         "triggered_by": {
           "type": "array",
           "items": {
-            "enum": ["scheduled_a", "scheduled_b", "material_a", "failed_goal", "audit_sample", "hard_conflict", "weighted_distance"]
+            "enum": [
+              "scheduled_a",
+              "scheduled_b",
+              "material_a",
+              "request_material",
+              "recommendation_material_a",
+              "failed_goal",
+              "audit_sample",
+              "hard_conflict",
+              "weighted_distance",
+              "merge_incompatible"
+            ]
           },
           "uniqueItems": true
         },
         "hard_triggers": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
         "agreements": { "type": "array", "items": { "type": "string" } },
         "disagreements": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "comparison_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stage",
+          "round",
+          "distance",
+          "weighted_distance",
+          "tolerance",
+          "dimension_distances",
+          "hard_triggers",
+          "merge_compatible",
+          "requires_cross_review",
+          "agreements",
+          "disagreements"
+        ],
+        "properties": {
+          "stage": { "enum": ["independent", "cross_review"] },
+          "round": { "type": "integer", "minimum": 1 },
+          "distance": { "type": "number", "minimum": 0, "maximum": 1 },
+          "weighted_distance": { "type": "number", "minimum": 0, "maximum": 1 },
+          "tolerance": { "type": "number", "minimum": 0, "maximum": 1 },
+          "dimension_distances": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "hard_triggers": {
+            "type": "array",
+            "items": { "type": "string" },
+            "uniqueItems": true
+          },
+          "merge_compatible": { "type": "boolean" },
+          "requires_cross_review": { "type": "boolean" },
+          "agreements": { "type": "array", "items": { "type": "string" } },
+          "disagreements": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "resolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis", "decisive_stage"],
+      "properties": {
+        "basis": {
+          "enum": [
+            "a_only",
+            "within_tolerance",
+            "cross_review_converged",
+            "c_select_a",
+            "c_select_b",
+            "c_synthesize",
+            "c_insufficient_evidence",
+            "c_escalate",
+            "c_judgment"
+          ]
+        },
+        "decisive_stage": { "enum": ["independent", "cross_review"] }
       }
     },
     "baseline": {
@@ -206,6 +286,7 @@
       "required": ["comparator_profile", "reviewers", "tie_breaker"],
       "properties": {
         "comparator_profile": { "type": "string" },
+        "routing_mode": { "enum": ["fixture", "automatic"] },
         "reviewers": {
           "type": "array",
           "items": {

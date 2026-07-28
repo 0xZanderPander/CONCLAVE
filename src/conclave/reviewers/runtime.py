@@ -2,7 +2,7 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 from conclave.domain.enums import (
     RecommendationCategory,
@@ -40,10 +40,45 @@ class Assessment(BaseModel):
     primary_conversion: str | None = None
     missing_evidence: tuple[str, ...] = ()
     review_after_hours: float | None = Field(default=None, ge=0)
-    tie_break_verdict: (
-        Literal["select_a", "select_b", "synthesize", "insufficient_evidence", "escalate"] | None
-    ) = None
+
+
+class ReviewerCJudgment(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    verdict: Literal[
+        "select_a",
+        "select_b",
+        "synthesize",
+        "insufficient_evidence",
+        "escalate",
+    ]
+    summary: str = Field(min_length=1)
     selected_slot: Literal["A", "B"] | None = None
+    resolution_assessment: Assessment | None = None
+    confidence: float = Field(ge=0, le=1)
+    evidence_quality: Literal["strong", "adequate", "weak", "insufficient"]
+    unresolved_claims: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_verdict(self) -> "ReviewerCJudgment":
+        expected_slot = {
+            "select_a": "A",
+            "select_b": "B",
+        }.get(self.verdict)
+        if expected_slot is not None:
+            if self.selected_slot != expected_slot:
+                raise ValueError(f"{self.verdict} requires selected_slot={expected_slot}")
+            if self.resolution_assessment is not None:
+                raise ValueError("select verdicts cannot include a resolution assessment")
+            return self
+        if self.selected_slot is not None:
+            raise ValueError(f"{self.verdict} cannot select a reviewer slot")
+        if self.resolution_assessment is None:
+            raise ValueError(f"{self.verdict} requires a resolution assessment")
+        return self
+
+
+ReviewOutput = Assessment | ReviewerCJudgment
 
 
 class PeerAssessment(BaseModel):
@@ -76,12 +111,12 @@ class ReviewCall(BaseModel):
 
 
 class ReviewerRuntime(Protocol):
-    def review(self, call: ReviewCall) -> Assessment:
-        """Return one structured assessment without changing external state."""
+    def review(self, call: ReviewCall) -> ReviewOutput:
+        """Return one structured review output without changing external state."""
 
 
 class ReviewerProvider(Protocol):
-    def invoke(self, call: ReviewCall) -> Assessment | Mapping[str, Any]:
+    def invoke(self, call: ReviewCall) -> ReviewOutput | Mapping[str, Any]:
         """Return a structured response without changing external state."""
 
 
@@ -107,8 +142,9 @@ class ProviderRegistryRuntime:
         self._providers = dict(providers)
         self._max_attempts = max_attempts
         self._assessment_adapter = TypeAdapter(Assessment)
+        self._judgment_adapter = TypeAdapter(ReviewerCJudgment)
 
-    def review(self, call: ReviewCall) -> Assessment:
+    def review(self, call: ReviewCall) -> ReviewOutput:
         try:
             provider = self._providers[call.provider]
         except KeyError as exc:
@@ -118,7 +154,12 @@ class ProviderRegistryRuntime:
         for attempt in range(1, self._max_attempts + 1):
             try:
                 response = provider.invoke(call)
-                return self._assessment_adapter.validate_python(response)
+                adapter = (
+                    self._judgment_adapter
+                    if call.stage == ReviewStage.JUDGING
+                    else self._assessment_adapter
+                )
+                return adapter.validate_python(response)
             except Exception as exc:
                 if attempt == self._max_attempts:
                     raise ReviewerProviderExhaustedError(
@@ -133,12 +174,12 @@ class FakeReviewerRuntime:
 
     def __init__(
         self,
-        responses: Mapping[tuple[ReviewerSlot, ReviewStage, int], Assessment],
+        responses: Mapping[tuple[ReviewerSlot, ReviewStage, int], ReviewOutput],
     ) -> None:
         self._responses = dict(responses)
         self.calls: list[ReviewCall] = []
 
-    def review(self, call: ReviewCall) -> Assessment:
+    def review(self, call: ReviewCall) -> ReviewOutput:
         key = (call.slot, call.stage, call.round)
         try:
             response = self._responses[key]

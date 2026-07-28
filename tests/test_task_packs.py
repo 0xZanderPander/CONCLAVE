@@ -1,3 +1,4 @@
+import json
 from copy import deepcopy
 from datetime import datetime, timedelta
 
@@ -8,6 +9,11 @@ from conclave.domain.enums import RecommendationCategory, ReviewState
 from conclave.events.models import DomainEventType
 from conclave.fixtures import load_design_plan_revisions, load_request_fixture
 from conclave.intake import ReviewIntakeService
+from conclave.ledger.repository import (
+    LedgerConflictError,
+    canonical_hash,
+)
+from conclave.paths import contracts_root
 from conclave.reviewers.runtime import Assessment, RecommendedAction
 from conclave.task_packs.comparison import compare_assessments
 from conclave.task_packs.models import ComparatorDimension, HardTrigger
@@ -34,6 +40,7 @@ def _assessment(
         risk=risk,
         confidence=0.8,
         evidence_quality=evidence_quality,
+        expected_goal_impact="uncertain",
         tracking_health=tracking_health,
         optimization_eligible=optimization_eligible,
         primary_conversion="eligible_giveaway_entry_completed",
@@ -128,6 +135,33 @@ def test_stale_evidence_is_snapshotted_then_enters_explicit_terminal_state() -> 
         engine.dispose()
 
 
+def test_intake_pins_one_immutable_task_pack_revision() -> None:
+    engine = create_test_engine()
+    repository = create_test_repository(engine)
+    try:
+        for revision in load_design_plan_revisions():
+            repository.add_plan_revision(revision)
+        accepted = ReviewIntakeService(repository).accept(load_request_fixture())
+        session = repository.get_session(accepted.session_id)
+        pinned = repository.get_task_pack_revision(accepted.task_pack_hash)
+
+        assert session is not None
+        assert session.task_pack_hash == accepted.task_pack_hash
+        assert pinned is not None
+        assert pinned.task_pack_ref == "marketing-ads/v1"
+
+        changed = deepcopy(pinned.document)
+        changed["max_evidence_age_hours"] = 48
+        with pytest.raises(LedgerConflictError, match="cannot be reused"):
+            repository.register_task_pack_revision(
+                task_pack_ref=pinned.task_pack_ref,
+                content_hash=canonical_hash(changed),
+                document=changed,
+            )
+    finally:
+        engine.dispose()
+
+
 def test_assessment_validation_enforces_request_ontology_and_eligibility() -> None:
     registry = default_task_pack_registry()
     weak = load_request_fixture("02-weak-evidence.json")
@@ -139,6 +173,7 @@ def test_assessment_validation_enforces_request_ontology_and_eligibility() -> No
             magnitude=0.1,
             confidence=0.8,
         ),
+        optimization_eligible=False,
     )
 
     with pytest.raises(ContractValidationError, match="optimization-ineligible"):
@@ -204,3 +239,35 @@ def test_comparator_hard_trigger_overrides_weighted_distance() -> None:
     assert comparison.distance == 1
     assert comparison.requires_cross_review
     assert HardTrigger.OPPOSITE_ACTION_DIRECTION in comparison.hard_triggers
+
+
+def test_assessment_pair_fixtures_reproduce_comparator_decisions() -> None:
+    path = (
+        contracts_root()
+        / "fixtures"
+        / "comparator"
+        / "marketing-v1-assessment-pairs.json"
+    )
+    with path.open(encoding="utf-8") as source:
+        document = json.load(source)
+    task_pack = default_task_pack_registry().get(document["profile"])
+
+    for case in document["cases"]:
+        left = Assessment.model_validate({**document["defaults"], **case["left"]})
+        right = Assessment.model_validate({**document["defaults"], **case["right"]})
+        comparison = compare_assessments(left, right, task_pack)
+
+        assert comparison.weighted_distance == pytest.approx(
+            case["expected_weighted_distance"]
+        ), case["id"]
+        assert {trigger.value for trigger in comparison.hard_triggers} == set(
+            case["expected_hard_triggers"]
+        ), case["id"]
+        assert comparison.requires_cross_review == case["expected_cross_review"], case["id"]
+        for dimension, expected in case["expected_dimensions"].items():
+            assert comparison.dimension_distances[ComparatorDimension(dimension)] == pytest.approx(
+                expected
+            ), case["id"]
+        if expected_urgency := case.get("expected_merged_urgency"):
+            assert comparison.merged_assessment is not None
+            assert comparison.merged_assessment.actions[0].urgency == expected_urgency

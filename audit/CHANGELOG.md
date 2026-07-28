@@ -9,6 +9,7 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 
 | Date | Rev | Requested by | Applied by | Summary |
 |---|---|---|---|---|
+| 2026-07-26 | r9 | Al | Codex | Completed the accepted Phase 2 hardening: pinned task-pack revisions, explicit C judgments, resumable execution, reconstructive audit checks, and non-local caller authentication |
 | 2026-07-26 | r8 | Al | Codex | Started Phase 2 with a registered Marketing-v1 task pack, eligibility validation, weighted comparison, hard triggers, and automatic route selection |
 | 2026-07-26 | r7 | Al | Codex | Promoted the audit ledger into a typed transport-neutral event stream and documented the future adapter boundary before Phase 2 |
 | 2026-07-26 | r6 | Al | Codex | Recorded Phase 1B implementation and Supabase verification; made automatic comparator routing the explicit Phase 2 boundary |
@@ -17,6 +18,81 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 | 2026-07-24 | r3 | Al | Codex | Separated Marketing domain ownership from the Conclave kernel; replaced direct Meta, Telegram, policy, outcome, and learning ownership with versioned request/result/feedback contracts |
 | 2026-07-24 | r2 | Al | Conclave assistant (Cowork session) | Three-reviewer panel, cadence-based ping-pong, tolerance-triggered cross review, tie-breaker, baseline, configurable adjudicator, Hermes learning seam, domain contract, testable Phase 0 gate |
 | 2026-07-14 | r1 | Al | Al | Initial Marketing-first, read-only MVP design (baseline of these docs) |
+
+---
+
+## r9 — 2026-07-26
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** `README.md`, `MVP_project_architecture.md`,
+`MVP_build_roadmap.md`, `MVP_architecture_flow.mmd`,
+`hyperstructure-review-contracts/`, `audit/CHANGELOG.md`, Phase 2 source,
+migration, and tests
+
+### Why
+
+The Phase 2 acceptance review found several places where a recorded route could
+be technically complete but not fully reconstructable. Reviewer C's verdict
+was overloaded onto a normal assessment, task-pack meaning was loaded from
+mutable application registration, a crash could repeat completed model work,
+and non-local caller authentication remained deferred.
+
+### What changed
+
+1. Every new session pins the full task-pack document by a deterministic
+   content hash. The stored revision supplies action ontology, eligibility,
+   materiality, comparator, and merge semantics for the life of that session.
+2. Request materiality and reviewer recommendation materiality are separate
+   deterministic panel-expansion inputs with separate review-plan levers.
+3. The Marketing-v1 task pack now owns action directions, opposite action
+   pairs, required assessment fields, material recommendation rules, and
+   maximum evidence age.
+4. Comparator golden fixtures now contain full assessment pairs and cover all
+   weighted dimensions, hard triggers, merge incompatibility, and conservative
+   timing.
+5. Reviewer C now returns a separate required judgment. Selecting A or B
+   preserves that exact final assessment; synthesis and safe fallback require
+   an explicit task-pack-valid assessment.
+6. Automatic orchestration is state-driven and resumable from every legal
+   partial state. Completed invocations, comparisons, results, and transitions
+   are reused instead of repeated.
+7. Results preserve both initial and post-cross-review comparisons, identify
+   the decisive resolution basis, and store the task-pack hash.
+8. The decision verifier recomputes materiality, comparison rounds, route
+   eligibility, reviewer-C use, and the published recommendation from stored
+   inputs.
+9. Non-local API mode now fails startup without configured credentials.
+   Scoped bearer authentication and caller ownership checks protect review,
+   event, audit, and operational endpoints.
+10. Migration `20260726_0008` adds immutable `task_pack_revisions` and pins new
+    `review_sessions` to them.
+
+### Verification
+
+- Ruff passed.
+- The complete local suite passed: 79 tests, with only the four
+  PostgreSQL-only cases skipped.
+- All four PostgreSQL-only cases passed against the dedicated Conclave
+  Supabase project: full fixture flows, concurrent event ordering,
+  subscriber-delivery locking, and worker-claim locking.
+- Supabase migration history and Alembic both report revision
+  `20260726_0008`; hosted test rows were removed after verification.
+- Supabase security and performance advisors report informational notices only.
+  RLS intentionally has no client policies because Conclave tables are private
+  to the server process, and the unused-index notices are expected for a new
+  test database.
+
+### Not changed
+
+- The A/B, one-round cross-review, and two-stage C protocol remains fixed.
+- Conclave remains a recommendation-review module, not an execution or
+  generalized workflow engine.
+- Conclave has no Marketing data connector, platform credentials, campaign
+  control, spend authority, outcome ownership, or Marketing learning
+  ownership.
+- Discord, Telegram, Slack, and other presentation adapters remain deferred
+  consumers of the transport-neutral event stream.
 
 ---
 

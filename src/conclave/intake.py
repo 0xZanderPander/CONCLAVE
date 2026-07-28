@@ -15,6 +15,7 @@ from conclave.task_packs.registry import (
 class IntakeResult:
     session_id: str
     snapshot_hash: str
+    task_pack_hash: str
     state: ReviewState
     optimization_eligible: bool
     material: bool
@@ -32,7 +33,13 @@ class ReviewIntakeService:
 
     def accept(self, document: dict[str, Any]) -> IntakeResult:
         validate_review_request(document)
+        task_pack = self._task_packs.get(document["task_pack_ref"])
         eligibility = self._task_packs.validate_request(document)
+        self._repository.register_task_pack_revision(
+            task_pack_ref=task_pack.task_pack_ref,
+            content_hash=task_pack.content_hash,
+            document=task_pack.revision_document(),
+        )
         trigger = ReviewTrigger.model_validate(document["review_trigger"])
         identity = RequestIdentity(
             caller_id=document["caller"]["caller_id"],
@@ -59,7 +66,10 @@ class ReviewIntakeService:
             due_at=trigger.due_at,
             trigger_kind=trigger.kind.value,
         )
-        session = self._repository.create_session(identity)
+        session = self._repository.create_session(
+            identity,
+            task_pack_hash=task_pack.content_hash,
+        )
         state = ReviewState(session.current_state)
         if state == ReviewState.REQUESTED:
             session = self._repository.transition_session(
@@ -98,6 +108,7 @@ class ReviewIntakeService:
         return IntakeResult(
             session_id=session.session_id,
             snapshot_hash=snapshot.content_hash,
+            task_pack_hash=task_pack.content_hash,
             state=state,
             optimization_eligible=eligibility.optimization_eligible,
             material=eligibility.materiality.material,

@@ -4,6 +4,7 @@
   "request_idempotency_key": "review_bc_glm_giveaway_2026_07_dep_a_2026-07-24T08:00Z",
   "occurrence_id": "occ_rp_meta_giveaway_r4_20260724T0800Z",
   "task_pack_ref": "marketing-ads/v1",
+  "task_pack_hash": null,
   "review_plan_ref": "rp_meta_giveaway",
   "review_plan_revision": 4,
   "request_snapshot_hash": "sha256:PLACEHOLDER_matches_request_01",
@@ -44,6 +45,22 @@
     "agreements": ["pause cr_b", "retain cr_a"],
     "disagreements": []
   },
+  "comparison_history": [
+    {
+      "stage": "independent",
+      "round": 1,
+      "distance": 0.04,
+      "weighted_distance": 0.04,
+      "tolerance": 0.25,
+      "dimension_distances": {},
+      "hard_triggers": [],
+      "merge_compatible": true,
+      "requires_cross_review": false,
+      "agreements": ["pause cr_b", "retain cr_a"],
+      "disagreements": []
+    }
+  ],
+  "resolution": { "basis": "within_tolerance", "decisive_stage": "independent" },
   "baseline": { "category": "operational_change", "changed_by_panel": false },
   "confidence": 0.86,
   "evidence_quality": "adequate",

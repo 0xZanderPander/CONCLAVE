@@ -7,8 +7,8 @@ from conclave.ledger.models import (
     ReviewerInvocationRecord,
     ReviewSessionRecord,
 )
-from conclave.reviewers.runtime import Assessment
-from conclave.task_packs.comparison import ComparisonResult
+from conclave.reviewers.runtime import Assessment, ReviewerCJudgment
+from conclave.task_packs.comparison import ComparisonResult, ComparisonRound
 
 _AUTO_RESOLVE_CATEGORIES = {
     RecommendationCategory.OBSERVE,
@@ -20,6 +20,12 @@ def _assessment(invocation: ReviewerInvocationRecord) -> Assessment:
     if invocation.status != "completed" or invocation.assessment_payload is None:
         raise ValueError(f"invocation {invocation.invocation_id!r} has no valid assessment")
     return Assessment.model_validate(invocation.assessment_payload)
+
+
+def _judgment(invocation: ReviewerInvocationRecord) -> ReviewerCJudgment:
+    if invocation.status != "completed" or invocation.assessment_payload is None:
+        raise ValueError(f"invocation {invocation.invocation_id!r} has no valid judgment")
+    return ReviewerCJudgment.model_validate(invocation.assessment_payload)
 
 
 def _find(
@@ -50,9 +56,11 @@ def build_review_result(
     invocations: list[ReviewerInvocationRecord],
     path: str,
     final_assessment: Assessment | None = None,
-    comparison: ComparisonResult | None = None,
+    comparisons: tuple[ComparisonRound, ...] = (),
+    judgment: ReviewerCJudgment | None = None,
     route_triggers: tuple[str, ...] = (),
     auto_resolve_enabled: bool = True,
+    routing_mode: str = "fixture",
 ) -> dict[str, Any]:
     request = snapshot.content
     baseline_invocation = _find(
@@ -62,6 +70,9 @@ def build_review_result(
         round_number=1,
     )
     baseline = _assessment(baseline_invocation)
+    comparison: ComparisonResult | None = (
+        comparisons[-1].comparison if comparisons else None
+    )
 
     if path == "a_only":
         final = final_assessment or baseline
@@ -87,9 +98,24 @@ def build_review_result(
         )
         disagreement_summary = "A and B completed one bounded cross-review round."
     elif path == "c_tie_broken":
-        final = final_assessment or _assessment(
+        judgment = judgment or _judgment(
             _find(invocations, slot="C", stage="judging", round_number=2)
         )
+        if final_assessment is not None:
+            final = final_assessment
+        elif judgment.selected_slot is not None:
+            final = _assessment(
+                _find(
+                    invocations,
+                    slot=judgment.selected_slot,
+                    stage="cross_review",
+                    round_number=2,
+                )
+            )
+        elif judgment.resolution_assessment is not None:
+            final = judgment.resolution_assessment
+        else:
+            raise ValueError("reviewer-C judgment did not resolve to an assessment")
         disagreement_level = "tie_broken"
         distance = (
             comparison.distance
@@ -131,13 +157,27 @@ def build_review_result(
     ]
     tie_breaker = None
     if path == "c_tie_broken":
+        if judgment is None:
+            raise ValueError("reviewer-C result is missing its judgment")
         tie_breaker = {
-            "verdict": final.tie_break_verdict or "synthesize",
-            "selected_slot": final.selected_slot,
-            "confidence": final.confidence,
-            "evidence_quality": final.evidence_quality,
-            "unresolved_claims": list(final.missing_evidence),
+            "verdict": judgment.verdict,
+            "selected_slot": judgment.selected_slot,
+            "confidence": judgment.confidence,
+            "evidence_quality": judgment.evidence_quality,
+            "unresolved_claims": list(judgment.unresolved_claims),
         }
+
+    resolution_basis = {
+        "a_only": "a_only",
+        "ab_agreement": "within_tolerance",
+        "cross_review_resolved": "cross_review_converged",
+        "c_tie_broken": (
+            f"c_{judgment.verdict}" if judgment is not None else "c_judgment"
+        ),
+    }[path]
+    decisive_stage = (
+        comparisons[-1].stage.value if comparisons else "independent"
+    )
 
     document: dict[str, Any] = {
         "contract_version": "review-result/v1",
@@ -145,6 +185,7 @@ def build_review_result(
         "request_idempotency_key": session.idempotency_key,
         "occurrence_id": session.occurrence_id,
         "task_pack_ref": request["task_pack_ref"],
+        "task_pack_hash": session.task_pack_hash,
         "review_plan_ref": session.plan_id,
         "review_plan_revision": session.plan_revision,
         "request_snapshot_hash": snapshot.content_hash,
@@ -180,6 +221,14 @@ def build_review_result(
             "agreements": list(comparison.agreements) if comparison is not None else [],
             "disagreements": (list(comparison.disagreements) if comparison is not None else []),
         },
+        "comparison_history": [
+            comparison_round.public_document()
+            for comparison_round in comparisons
+        ],
+        "resolution": {
+            "basis": resolution_basis,
+            "decisive_stage": decisive_stage,
+        },
         "baseline": {
             "category": baseline.category.value,
             "changed_by_panel": baseline.category != final.category,
@@ -191,6 +240,7 @@ def build_review_result(
         "review_after_hours": final.review_after_hours,
         "panel_metadata": {
             "comparator_profile": request["comparator"]["profile"],
+            "routing_mode": routing_mode,
             "reviewers": reviewer_metadata,
             "tie_breaker": tie_breaker,
         },

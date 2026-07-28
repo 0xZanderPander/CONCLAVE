@@ -192,6 +192,10 @@ class ReviewSessionRecord(Base):
     )
     idempotency_key: Mapped[str] = mapped_column(String(240), nullable=False)
     evidence_version: Mapped[str] = mapped_column(String(200), nullable=False)
+    task_pack_hash: Mapped[str | None] = mapped_column(
+        ForeignKey("task_pack_revisions.content_hash"),
+        index=True,
+    )
     plan_id: Mapped[str] = mapped_column(String(160), nullable=False)
     plan_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     current_state: Mapped[str] = mapped_column(String(50), nullable=False, default="requested")
@@ -213,6 +217,17 @@ class RequestSnapshotRecord(Base):
     )
     content_hash: Mapped[str] = mapped_column(String(71), nullable=False, index=True)
     content: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class TaskPackRevisionRecord(Base):
+    __tablename__ = "task_pack_revisions"
+
+    content_hash: Mapped[str] = mapped_column(String(71), primary_key=True)
+    task_pack_ref: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
+    document: Mapped[dict[str, Any]] = mapped_column(POSTGRES_JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
@@ -405,6 +420,7 @@ for immutable_type in (
     ReviewerSlotRecord,
     ReviewOccurrenceRecord,
     RequestSnapshotRecord,
+    TaskPackRevisionRecord,
     ReviewResultRecord,
     AuditEventRecord,
 ):
@@ -420,6 +436,7 @@ def _protect_session_identity(_mapper: Any, _connection: Any, target: ReviewSess
         "occurrence_id",
         "idempotency_key",
         "evidence_version",
+        "task_pack_hash",
         "plan_id",
         "plan_revision",
         "created_at",

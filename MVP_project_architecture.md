@@ -5,13 +5,16 @@
 Active architecture for the independent Conclave MVP. Foundation phases 1A and
 1B and the transport-neutral event boundary are implemented and verified
 against the dedicated Conclave Supabase project. Phase 2 task-pack intake and
-automatic comparator routing are implemented and verified locally and on
-Supabase, and now await acceptance review.
+automatic comparator routing are implemented. The accepted Phase 2 hardening
+adds immutable task-pack pinning, explicit reviewer-C judgments, resumable
+execution, route reconstruction, and non-local caller authentication. Migration
+`20260726_0008` and the PostgreSQL acceptance cases are verified against the
+dedicated Conclave Supabase project.
 
-The normal worker infers the path from request triggers, reviewer-A
-materiality, A/B distance, and hard conflicts. The fixture harness may still
-select a known path so every protocol transition remains independently
-testable.
+The normal worker infers the path from request materiality, reviewer-A
+recommendation materiality, schedule and prior-outcome triggers, A/B distance,
+merge compatibility, and hard conflicts. The fixture harness may still select
+a known path so every protocol transition remains independently testable.
 
 Marketing OS is built separately and has no Conclave dependency.
 
@@ -29,8 +32,7 @@ Build Conclave as a modular monolith:
 - reviewer A as routine reviewer, B as cadence- and trigger-based auditor, and C
   as a two-stage judge
 - provider adapters behind `ReviewerRuntime`
-- a local fixture API now, with authenticated caller and feedback APIs deferred
-  until their acceptance criteria are approved
+- a local fixture API plus scoped bearer authentication for any non-local mode
 
 Conclave has no campaign builder, Meta adapter, account or Page discovery,
 first-party event collector, spend approval, Telegram approval adapter,
@@ -85,8 +87,8 @@ flowchart TB
     PlanAPI["Versioned review-plan API"] --> Plans["Plan revisions<br/>effective_at + audit history"]
     Plans --> Scheduler["Database scheduler<br/>deployment-specific cadences"]
     Scheduler --> Queue["Leased PostgreSQL work queue<br/>retry + dead letter"]
-    Queue --> Worker["Persistent worker"]
-    Worker --> Session["Review Session"]
+    Queue --> Worker["Resumable state-driven worker"]
+    Worker --> Session["Review Session<br/>pinned plan + task-pack revisions"]
     Request --> Session
     Session <--> Ledger[("PostgreSQL Review Ledger")]
     Ops["Operational controls<br/>queue + heartbeat + stale process"] -.-> Queue
@@ -96,8 +98,8 @@ flowchart TB
     Session --> A["Reviewer A<br/>routine assessment"]
     A --> Baseline["A-only baseline"]
     Baseline --> Ledger
-    A --> Expand{"B due or<br/>triggered?"}
-    Expand -->|"No + non-material"| Resolve["Reviewer adjudication"]
+    A --> Expand{"B due, request material,<br/>recommendation material,<br/>failed goal, or audit sample?"}
+    Expand -->|"No"| Resolve["Reviewer adjudication"]
     Expand -->|"Yes"| B["Reviewer B<br/>blind first round"]
     A --> Compare["Registered task-pack comparator<br/>weights + hard triggers"]
     B --> Compare
@@ -105,10 +107,10 @@ flowchart TB
     Compare -->|"Beyond tolerance<br/>or failed goal"| Cross["One bounded cross review"]
     Cross -->|"Resolved"| Resolve
     Cross -->|"Still disagree"| CBlind["Reviewer C<br/>blind assessment"]
-    CBlind --> CJudge["Reviewer C<br/>judge A vs B"]
+    CBlind --> CJudge["Reviewer C<br/>explicit judgment:<br/>select A/B, synthesize,<br/>insufficient evidence, or escalate"]
     CJudge --> Resolve
 
-    Resolve --> Result["Structured review result"]
+    Resolve --> Result["Structured review result<br/>comparison history + resolution basis"]
     Result --> Ledger
     Ledger --> Audit["Decision-ledger verifier"]
     Ledger --> Dispatcher["Transport-neutral event dispatcher"]
@@ -200,7 +202,8 @@ review_plan:
       cadence: event_only
 
   panel_expansion:
-    invoke_b_on_a_material: true
+    invoke_b_on_request_material: true
+    invoke_b_on_recommendation_material: true
     invoke_b_on_failed_goal: true
     nonmaterial_audit_sample_rate: 0.10
 
@@ -223,7 +226,9 @@ delivery, but only after separate approval.
 Reviewer A runs for every due eligible occurrence. Reviewer B joins when:
 
 - B's independently configured cadence is due;
-- A proposes a material result;
+- the caller-declared request is material and the plan enables that trigger;
+- A proposes a deterministically material recommendation and the plan enables
+  that trigger;
 - outcome feedback says a prior change failed to move the goal; or
 - the occurrence is selected by the configured audit sample.
 
@@ -290,8 +295,8 @@ completed work.
 
 ### API
 
-- accept local idempotent fixture requests now
-- require authenticated caller identities before any non-local deployment
+- accept local idempotent fixture requests in development and test
+- require scoped bearer credentials and caller ownership in non-local mode
 - expose review status and complete review records
 - deliver or expose structured results
 - accept opaque caller feedback
@@ -301,7 +306,7 @@ completed work.
 
 - identify reviewer A and B work due under the approved plan
 - apply plan revisions at their `effective_at` boundaries
-- create idempotent sessions and reviewer invocations
+- create idempotent sessions pinned to immutable plan and task-pack revisions
 - claim due work with a PostgreSQL lease and `SKIP LOCKED`
 - retry recoverable failures and dead-letter permanent or exhausted work
 - support operator retry and cancellation
@@ -316,14 +321,15 @@ completed work.
 - adjudicate reviewer disagreement
 - deliver structured results
 - evaluate caller feedback against reviewer performance
-- retry recoverable failures
+- resume from every legal partial state without repeating completed reviewer
+  work or durable comparison decisions
 
 ## Application Modules
 
 ```text
 .
 ├── src/conclave/
-│   ├── api/                    # local fixture API, results, audit, operations
+│   ├── api/                    # scoped API, results, audit, operations
 │   ├── auditing/               # decision-ledger verification
 │   ├── contracts/              # request/result/feedback schema validation
 │   ├── events/                 # typed envelopes and publisher boundary
@@ -333,7 +339,7 @@ completed work.
 │   ├── reviewers/              # common runtime and provider registry
 │   ├── runtime/                # persistent scheduler and worker loops
 │   ├── scheduling/             # occurrence expansion and leased work
-│   ├── task_packs/              # registered ontology, eligibility, comparator
+│   ├── task_packs/             # registered ontology, eligibility, comparator
 │   ├── config.py
 │   └── database.py
 ├── migrations/
@@ -374,11 +380,13 @@ round, prompt and schema versions, snapshot hash, and terminal status. Token,
 latency, cost, and provider-specific timeout accounting are required before a
 real model provider is approved. There is no silent provider fallback.
 
-Reviewer C uses two invocations. The first has no A/B content. The second
-receives C's stored assessment plus A/B final claims and returns one verdict:
+Reviewer C uses two different output contracts. The first invocation has no A/B
+content and returns a normal assessment. The second receives C's stored
+assessment plus A/B final claims and returns an explicit judgment:
 `select_a`, `select_b`, `synthesize`, `insufficient_evidence`, or `escalate`.
-Any synthesis must validate against the caller's registered action and
-recommendation ontology.
+Selecting A or B preserves that exact final assessment. Any synthesis, safe
+fallback, or escalation must supply an explicit assessment that validates
+against the pinned task pack. There is no inferred verdict.
 
 ### Comparator
 
@@ -443,7 +451,8 @@ the panel outperformed reviewer A.
 
 ## Persistence
 
-Implemented through migrations `20260726_0006` and `20260726_0007`:
+Implemented through migrations `20260726_0006`, `20260726_0007`, and
+`20260726_0008`:
 
 - `review_plans`
 - `review_plan_revisions`
@@ -459,6 +468,7 @@ Implemented through migrations `20260726_0006` and `20260726_0007`:
 - `event_streams`
 - `event_subscriptions`
 - `event_deliveries`
+- `task_pack_revisions`
 
 `audit_events` remains the one canonical event history. Migration
 `20260726_0007` adds the public typed envelope and uses `event_streams` for
@@ -476,7 +486,9 @@ event contract, ordering, retry, privacy, and adapter rules.
 
 Assessments, claims, baselines, disagreement, tie-break metadata, and the final
 recommendation are stored as validated structured documents in invocations and
-results for the MVP. Separate query-oriented tables should be added only when a
+results for the MVP. Each new review session stores the content hash of the
+immutable task-pack revision used for eligibility, materiality, comparison, and
+result validation. Separate query-oriented tables should be added only when a
 proven access pattern requires them.
 
 Deferred persistence includes external feedback references, reviewer
@@ -485,6 +497,7 @@ evaluation candidates, and result-delivery attempts.
 Important constraints:
 
 - one session per caller, occurrence ID, evidence version, and plan revision
+- one immutable task-pack content hash per new session
 - one invocation per session, reviewer slot, stage, and round
 - immutable snapshot content after hashing
 - one assessment per reviewer slot, snapshot, and round
@@ -516,14 +529,17 @@ Implemented local fixture endpoints:
 - `GET /health`
 - `GET /ready`
 
-The fixture API is local and unauthenticated. It must not be exposed as a
-production service. Authenticated callers, plan-management endpoints, external
+Local fixture mode is development-only and does not require a credential.
+Every non-local mode fails startup unless scoped static bearer credentials are
+configured. Reads are restricted to the owning caller; operational endpoints
+require the `operations:manage` scope. Plan-management endpoints, external
 feedback, and result-delivery endpoints are later-phase work.
 
 ## Security and Reliability
 
 - no platform or domain-production credentials
 - authenticated caller identities before any non-local deployment
+- least-privilege caller scopes and caller ownership checks
 - caller-declared classification plus Conclave validation
 - redacted snapshots before provider calls
 - secrets outside source control
@@ -575,7 +591,8 @@ Project decisions still required:
 - exact reviewer assignments and stances
 - cost and timeout ceilings
 - submitted-evidence retention
-- caller authentication and result-delivery mode
+- production identity-provider choice beyond the MVP static bearer boundary
+- result-delivery mode
 - future caller acceptance of a contract version, only if an integration is
   later approved
 

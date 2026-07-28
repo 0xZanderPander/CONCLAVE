@@ -1,5 +1,49 @@
 {
   "profile": "marketing-ads/v1",
+  "max_evidence_age_hours": 24,
+  "action_ontology": {
+    "directions": {
+      "pause_creative": "decrease",
+      "retain_creative": "hold",
+      "collect_more_data": "observe",
+      "diagnose_tracking": "diagnose",
+      "freeze_scope": "freeze",
+      "propose_experiment": "experiment",
+      "budget_increase": "increase",
+      "budget_decrease": "decrease",
+      "creative_rotation": "change",
+      "audience_change": "change"
+    },
+    "non_optimization_action_types": [
+      "collect_more_data",
+      "diagnose_tracking",
+      "freeze_scope"
+    ],
+    "opposite_direction_pairs": [
+      ["increase", "decrease"]
+    ]
+  },
+  "assessment_contract": {
+    "required_fields": [
+      "expected_goal_impact",
+      "tracking_health",
+      "optimization_eligible",
+      "primary_conversion"
+    ]
+  },
+  "recommendation_materiality": {
+    "categories": ["experiment", "operational_change", "freeze"],
+    "action_types": [
+      "pause_creative",
+      "freeze_scope",
+      "propose_experiment",
+      "budget_increase",
+      "budget_decrease",
+      "creative_rotation",
+      "audience_change"
+    ],
+    "risk_levels": ["medium", "high"]
+  },
   "tolerance": 0.25,
   "dimensions": [
     { "name": "recommendation_disposition", "weight": 0.22 },
