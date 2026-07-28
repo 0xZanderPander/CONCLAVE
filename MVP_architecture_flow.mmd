@@ -12,7 +12,10 @@ flowchart TB
     Ops -.-> Worker
     FixturePath["Regression-only fixture path selector"] -.-> Expand
 
-    Session --> A["Reviewer A<br/>routine assessment"]
+    Session --> Runtime["Explicit reviewer runtime<br/>fixture or production provider"]
+    Runtime --> A["Reviewer A<br/>routine assessment"]
+    A --> ProviderTelemetry["Provider attempt telemetry<br/>tokens + latency + cost + status"]
+    ProviderTelemetry --> Ledger
     A --> Baseline["A-only baseline"]
     Baseline --> Ledger
     A --> Expand{"B due, request material,<br/>recommendation material,<br/>failed goal, or audit sample?"}

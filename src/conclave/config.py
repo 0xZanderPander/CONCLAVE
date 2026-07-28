@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 DEFAULT_ENVIRONMENT = "development"
 DEFAULT_DATABASE_URL = "postgresql+psycopg://conclave:conclave@localhost:5432/conclave"
 DEFAULT_LOG_LEVEL = "INFO"
+DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 
 def _integer(values: Mapping[str, str], name: str, default: int) -> int:
@@ -31,6 +32,9 @@ class Settings:
     database_pool_recycle_seconds: int = 1800
     caller_auth_mode: str = "local_fixture"
     caller_credentials_json: str | None = field(default=None, repr=False)
+    reviewer_runtime_mode: str = "fixture"
+    openai_api_key: str | None = field(default=None, repr=False)
+    openai_base_url: str = DEFAULT_OPENAI_BASE_URL
 
     def __post_init__(self) -> None:
         if self.caller_auth_mode not in {"local_fixture", "static_bearer"}:
@@ -46,6 +50,17 @@ class Settings:
             raise ValueError(
                 "static bearer authentication requires caller credentials"
             )
+        if self.reviewer_runtime_mode not in {"fixture", "openai"}:
+            raise ValueError("CONCLAVE_REVIEWER_RUNTIME_MODE is invalid")
+        if (
+            self.environment not in {"development", "test"}
+            and self.reviewer_runtime_mode == "fixture"
+        ):
+            raise ValueError(
+                "non-local Conclave deployments require a production reviewer runtime"
+            )
+        if self.reviewer_runtime_mode == "openai" and not self.openai_api_key:
+            raise ValueError("the OpenAI reviewer runtime requires an API key")
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str] | None = None) -> "Settings":
@@ -75,5 +90,14 @@ class Settings:
                 "local_fixture",
             ),
             caller_credentials_json=values.get("CONCLAVE_CALLER_CREDENTIALS_JSON"),
+            reviewer_runtime_mode=values.get(
+                "CONCLAVE_REVIEWER_RUNTIME_MODE",
+                "fixture",
+            ),
+            openai_api_key=values.get("CONCLAVE_OPENAI_API_KEY"),
+            openai_base_url=values.get(
+                "CONCLAVE_OPENAI_BASE_URL",
+                DEFAULT_OPENAI_BASE_URL,
+            ),
         )
         return settings

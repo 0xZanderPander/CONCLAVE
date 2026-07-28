@@ -11,7 +11,13 @@ from conclave.fixtures import load_design_plan_revisions
 from conclave.intake import ReviewIntakeService
 from conclave.ledger.repository import LedgerRepository
 from conclave.orchestration.service import FixturePath, ReviewOrchestrator
-from conclave.reviewers.development import DevelopmentReviewerRuntime
+from conclave.reviewers.development import DevelopmentReviewerProvider
+from conclave.reviewers.runtime import (
+    ProviderCallResult,
+    ProviderRegistryRuntime,
+    ProviderUsage,
+    ReviewCall,
+)
 from conclave.scheduling.worker import FixtureWorker
 
 POSTGRES_TEST_URL = os.getenv("CONCLAVE_TEST_DATABASE_URL")
@@ -29,6 +35,24 @@ _EXPECTED_INVOCATIONS = {
     FixturePath.CROSS_REVIEW_RESOLVED: 4,
     FixturePath.C_TIE_BROKEN: 6,
 }
+
+
+class IntegrationTelemetryProvider:
+    def invoke(self, call: ReviewCall) -> ProviderCallResult:
+        return ProviderCallResult(
+            output=DevelopmentReviewerProvider().invoke(call),
+            provider_request_id=f"req_{call.slot.value}_{call.round}",
+            provider_response_id=f"resp_{call.slot.value}_{call.round}",
+            finish_status="completed",
+            usage=ProviderUsage(
+                input_tokens=100,
+                output_tokens=20,
+                reasoning_tokens=5,
+                total_tokens=120,
+                cost_usd=0.001,
+                pricing_version="integration-v1",
+            ),
+        )
 
 
 @pytest.mark.skipif(
@@ -72,10 +96,16 @@ def test_postgres_runs_and_verifies_every_fixture_decision_path() -> None:
             )
             occurrence_ids.append(occurrence_id)
 
+        provider = IntegrationTelemetryProvider()
         worker = FixtureWorker(
             repository,
             ReviewIntakeService(repository),
-            ReviewOrchestrator(repository, DevelopmentReviewerRuntime()),
+            ReviewOrchestrator(
+                repository,
+                ProviderRegistryRuntime(
+                    {"fixture": provider, "deterministic": provider}
+                ),
+            ),
         )
         auditor = AuditVerifier(repository)
 
@@ -97,6 +127,9 @@ def test_postgres_runs_and_verifies_every_fixture_decision_path() -> None:
             assert persisted is not None
             assert persisted.document["contract_version"] == "review-result/v1"
             assert persisted.document["panel_metadata"]["reviewers"]
+            assert persisted.document["panel_metadata"]["reviewers"][0][
+                "pricing_version"
+            ] == "integration-v1"
             assert work_item is not None
             assert work_item.status == "completed"
             if path == FixturePath.C_TIE_BROKEN:
@@ -160,6 +193,14 @@ def test_postgres_runs_and_verifies_every_fixture_decision_path() -> None:
             connection.execute(
                 text(f"delete from audit_events where {event_scope}"),
                 {"plan_id": plan_id, "revision_id": revision_id},
+            )
+            connection.execute(
+                text(
+                    "delete from reviewer_provider_attempts where invocation_id in "
+                    "(select invocation_id from reviewer_invocations where session_id in "
+                    "(select session_id from review_sessions where plan_id = :plan_id))"
+                ),
+                {"plan_id": plan_id},
             )
             for table_name in (
                 "review_results",

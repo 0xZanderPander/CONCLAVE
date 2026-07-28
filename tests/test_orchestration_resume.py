@@ -7,7 +7,12 @@ from conclave.domain.enums import ReviewerSlot, ReviewStage, ReviewState
 from conclave.fixtures import load_design_plan_revisions, load_request_fixture
 from conclave.intake import ReviewIntakeService
 from conclave.orchestration.service import ReviewOrchestrator
-from conclave.reviewers.runtime import FakeReviewerRuntime, ReviewCall, ReviewOutput
+from conclave.reviewers.runtime import (
+    FakeReviewerRuntime,
+    ReviewCall,
+    ReviewerExecution,
+    ReviewOutput,
+)
 from tests.helpers import create_test_engine, create_test_repository
 from tests.test_automatic_routing import _collect, _judgment, _pause
 
@@ -33,12 +38,12 @@ class CrashOnceRuntime:
         self._crash_at = crash_at
         self._crashed = False
 
-    def review(self, call: ReviewCall) -> ReviewOutput:
+    def review(self, call: ReviewCall) -> ReviewerExecution:
         key = (call.slot, call.stage, call.round)
         if key == self._crash_at and not self._crashed:
             self._crashed = True
             raise KeyboardInterrupt("simulated process loss")
-        return self._responses[key]
+        return ReviewerExecution(output=self._responses[key])
 
 
 @pytest.mark.parametrize("crash_at", tuple(_responses()))

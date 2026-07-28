@@ -3,8 +3,9 @@
 ## Status
 
 Active MVP build. Foundation phases 1A and 1B, the transport-neutral event
-boundary, and Phase 2 task-pack routing are implemented and verified with
-sample data, local tests, and the dedicated Conclave Supabase project.
+boundary, Phase 2 task-pack routing, and the approved Phase 3 reviewer-A
+provider boundary are implemented and verified with sample data, local tests,
+and the dedicated Conclave Supabase project.
 
 The normal worker now selects A-only, A/B agreement, cross-review, or reviewer C
 from request and recommendation materiality, scheduled and failed-goal
@@ -14,6 +15,12 @@ explicit fixture-path selector remains a regression harness.
 Every new session pins an immutable task-pack revision. Automatic reviews can
 resume from any legal partial state, and the decision verifier recomputes the
 route from stored reviewer outputs rather than trusting recorded labels.
+
+Phase 3 adds a stateless, tool-free OpenAI Responses adapter for reviewer A,
+strict structured output, explicit runtime selection, bounded retries and cost
+limits, and durable provider-attempt telemetry. No live model call has been
+made because no OpenAI API key is configured. The final Phase 3 live
+reviewer-A acceptance run therefore remains open.
 
 Conclave does not depend on Marketing OS, and Marketing OS does not depend on
 Conclave.
@@ -203,6 +210,7 @@ A versioned configuration containing:
 - prompt and output-schema versions
 - permitted auto-resolve conditions
 - cost and timeout limits
+- provider retry, input, output, reasoning, and pricing limits
 
 Review-plan timing is deployment configuration, not kernel code. A deployed
 plan is edited by creating a new revision with an `effective_at` time. Existing
@@ -437,12 +445,20 @@ Completed foundation:
 10. registered `marketing-ads/v1` task-pack validation, deterministic
     eligibility and materiality checks, weighted comparison, hard triggers,
     conservative merge, and automatic panel routing
+11. explicit fixture or OpenAI runtime selection with no production fixture
+    fallback
+12. a stateless, tool-free reviewer-A OpenAI Responses adapter with strict
+    structured output and prompt-injection boundaries
+13. durable provider attempts, request/response IDs, token usage, latency,
+    cost, finish status, and pricing-version metadata through migration `0009`
 
 Next:
 
-1. select and implement the first real reviewer-provider adapter
-2. add provider-specific timeout, token, latency, and cost accounting
-3. complete the Phase 3 reviewer-A and baseline acceptance gate
+1. configure an OpenAI API key in the isolated test environment
+2. run one eligible reviewer-A snapshot through the live adapter and verify the
+   stored assessment, baseline, events, and telemetry
+3. approve the production reviewer-B prompt and adapter behavior before
+   beginning the Phase 4A provider rollout
 
 Non-local API mode requires explicit bearer authentication and caller scopes.
 Local fixture mode remains available only in development and test.
@@ -463,6 +479,10 @@ Hermes does not own Conclave's snapshots, scheduling, reviewer state, or ledger.
 
 Any Hermes-generated prompt improvement or reviewer strategy remains a
 candidate until explicitly approved.
+
+A future Hermes reviewer adapter must run under a dedicated blank-slate
+profile: no tools, memory, skills, browsing, or unrelated session context.
+Hermes is not used by the Phase 3 reviewer-A adapter.
 
 ## 12. Future Domains
 

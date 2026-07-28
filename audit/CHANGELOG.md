@@ -9,6 +9,7 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 
 | Date | Rev | Requested by | Applied by | Summary |
 |---|---|---|---|---|
+| 2026-07-27 | r10 | Al | Codex | Implemented the approved Phase 3 reviewer-A provider boundary, limits, prompt, durable attempt telemetry, migration 0009, and hosted verification |
 | 2026-07-26 | r9 | Al | Codex | Completed the accepted Phase 2 hardening: pinned task-pack revisions, explicit C judgments, resumable execution, reconstructive audit checks, and non-local caller authentication |
 | 2026-07-26 | r8 | Al | Codex | Started Phase 2 with a registered Marketing-v1 task pack, eligibility validation, weighted comparison, hard triggers, and automatic route selection |
 | 2026-07-26 | r7 | Al | Codex | Promoted the audit ledger into a typed transport-neutral event stream and documented the future adapter boundary before Phase 2 |
@@ -18,6 +19,82 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 | 2026-07-24 | r3 | Al | Codex | Separated Marketing domain ownership from the Conclave kernel; replaced direct Meta, Telegram, policy, outcome, and learning ownership with versioned request/result/feedback contracts |
 | 2026-07-24 | r2 | Al | Conclave assistant (Cowork session) | Three-reviewer panel, cadence-based ping-pong, tolerance-triggered cross review, tie-breaker, baseline, configurable adjudicator, Hermes learning seam, domain contract, testable Phase 0 gate |
 | 2026-07-14 | r1 | Al | Al | Initial Marketing-first, read-only MVP design (baseline of these docs) |
+
+---
+
+## r10 — 2026-07-27
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** `README.md`, `MVP_project_architecture.md`,
+`MVP_build_roadmap.md`, `MVP_architecture_flow.mmd`, `EVENT_STREAM.md`,
+`audit/CHANGELOG.md`, result contract schema, Phase 3 source, migration, and
+tests
+
+### Why
+
+Al approved the Phase 3 review and asked Conclave to begin the first real
+reviewer-provider implementation without changing the fixed A/B/C protocol.
+The provider boundary needed explicit production configuration, safe prompt
+isolation, bounded operational limits, and auditable accounting before any live
+reviewer-A acceptance run.
+
+### What changed
+
+1. The first production provider adapter uses the OpenAI Responses API for
+   reviewer A. It is stateless, tool-free, uses strict structured output, and
+   treats the submitted snapshot as untrusted evidence rather than
+   instructions.
+2. Runtime selection is explicit. Development and test may use deterministic
+   fixtures; non-local deployments cannot start with the fixture runtime.
+   Missing providers never fall back silently.
+3. The initial approved provider policy allows two attempts, 90 seconds per
+   attempt, 30,000 input characters, 4,000 output tokens, a $0.15 cost ceiling,
+   medium reasoning effort, and versioned pricing inputs.
+4. Only typed transient provider failures retry. Invalid contract output,
+   permanent provider errors, and budget failures stop immediately.
+5. Reviewer invocations now store aggregate token, reasoning-token, latency,
+   cost, request/response, finish-status, and pricing metadata. Immutable
+   per-attempt records preserve retries and safe error categories.
+6. `provider_attempt_completed` events expose safe accounting facts through the
+   existing transport-neutral ledger. Raw provider responses, snapshots,
+   credentials, and hidden reasoning are not copied into events.
+7. Migration `20260727_0009` adds `reviewer_provider_attempts` and aggregate
+   telemetry columns to `reviewer_invocations`.
+8. The optional result metadata contract accepts the new audit fields without
+   breaking existing result fixtures.
+9. A future Hermes reviewer remains a separate adapter and must use a
+   dedicated blank-slate profile with no tools, memory, skills, browsing, or
+   unrelated context.
+
+### Verification
+
+- Ruff passed.
+- The complete local suite passed: 89 tests, with the four opt-in PostgreSQL
+  cases and one opt-in live-provider case skipped.
+- A clean SQLite database upgraded through the entire Alembic chain to
+  `20260727_0009`.
+- Migration `0009` was applied to the dedicated Conclave Supabase project.
+  Supabase migration history and Alembic both report the new revision.
+- All four PostgreSQL integration checks passed: full fixture flows with
+  provider telemetry, concurrent event ordering, subscriber-delivery locking,
+  and worker-claim locking.
+- Supabase security and performance advisors report informational notices only.
+  RLS intentionally has no client policies because Conclave tables are private
+  to the server process.
+- No live OpenAI call was made because no API key is configured. The one-call
+  reviewer-A live acceptance gate remains open.
+
+### Not changed
+
+- The A/B, one-round cross-review, and two-stage reviewer-C protocol is
+  unchanged.
+- Reviewer B and C do not yet have approved production prompts.
+- Conclave remains a recommendation-review module, not an execution engine.
+- Marketing OS remains independent, and any later Marketing connection remains
+  optional ad-performance review only.
+- Discord, Telegram, Slack, and other presentation adapters remain deferred
+  consumers of the same event stream.
 
 ---
 

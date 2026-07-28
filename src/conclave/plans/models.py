@@ -7,6 +7,20 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from conclave.domain.enums import ReviewerSlot, ReviewerType
 
 
+class ProviderPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    max_attempts: int = Field(default=2, ge=1, le=5)
+    timeout_seconds: int = Field(default=90, ge=1, le=600)
+    max_input_characters: int = Field(default=30_000, ge=1)
+    max_output_tokens: int = Field(default=4_000, ge=1)
+    max_cost_usd: float = Field(default=0.15, gt=0)
+    reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] = "medium"
+    input_cost_per_million_usd: float = Field(default=2.50, ge=0)
+    output_cost_per_million_usd: float = Field(default=15.00, ge=0)
+    pricing_version: str = Field(default="openai-2026-07-27", min_length=1)
+
+
 class SlotSchedule(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -18,6 +32,7 @@ class SlotSchedule(BaseModel):
     role_version: str = "role-v1"
     prompt_version: str = "prompt-v1"
     schema_version: str = "assessment-v1"
+    provider_policy: ProviderPolicy = Field(default_factory=ProviderPolicy)
 
     @model_validator(mode="after")
     def validate_schedule(self) -> "SlotSchedule":

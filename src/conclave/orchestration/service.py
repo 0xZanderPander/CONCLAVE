@@ -22,6 +22,7 @@ from conclave.reviewers.runtime import (
     PeerAssessment,
     ReviewCall,
     ReviewerCJudgment,
+    ReviewerProviderExhaustedError,
     ReviewerRuntime,
     ReviewOutput,
 )
@@ -496,6 +497,7 @@ class ReviewOrchestrator:
             prior_claims=prior_claims,
             peer_assessments=peer_assessments,
             requested_at=now,
+            provider_policy=assignment.provider_policy,
         )
         session = self._repository.get_session(session_id)
         snapshot_record = self._repository.get_snapshot(session_id)
@@ -503,7 +505,12 @@ class ReviewOrchestrator:
             raise OrchestrationStateError("invocation session or snapshot is unavailable")
         task_pack = self._task_pack_for_session(session, snapshot_record)
         try:
-            output = self._runtime.review(call)
+            execution = self._runtime.review(call)
+            self._repository.record_provider_attempts(
+                invocation_id=invocation.invocation_id,
+                attempts=execution.attempts,
+            )
+            output = execution.output
             if stage == ReviewStage.JUDGING:
                 if not isinstance(output, ReviewerCJudgment):
                     raise TypeError("reviewer C judging must return ReviewerCJudgment")
@@ -521,6 +528,11 @@ class ReviewOrchestrator:
                     task_pack=task_pack,
                 )
         except Exception as exc:
+            if isinstance(exc, ReviewerProviderExhaustedError):
+                self._repository.record_provider_attempts(
+                    invocation_id=invocation.invocation_id,
+                    attempts=exc.attempts,
+                )
             self._repository.fail_invocation(
                 invocation_id=invocation.invocation_id,
                 error=str(exc),

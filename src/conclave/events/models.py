@@ -24,6 +24,7 @@ class DomainEventType(StrEnum):
     REVIEWER_INVOCATION_CREATED = "reviewer_invocation_created"
     REVIEWER_INVOCATION_COMPLETED = "reviewer_invocation_completed"
     REVIEWER_INVOCATION_FAILED = "reviewer_invocation_failed"
+    PROVIDER_ATTEMPT_COMPLETED = "provider_attempt_completed"
     COMPARISON_COMPLETED = "comparison_completed"
     STATE_TRANSITIONED = "state_transitioned"
     RESULT_RECORDED = "result_recorded"

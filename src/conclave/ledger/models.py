@@ -260,11 +260,56 @@ class ReviewerInvocationRecord(Base):
     schema_version: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending")
     assessment_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    provider_request_id: Mapped[str | None] = mapped_column(String(200))
+    provider_response_id: Mapped[str | None] = mapped_column(String(200))
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    cached_input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    reasoning_tokens: Mapped[int | None] = mapped_column(Integer)
+    total_tokens: Mapped[int | None] = mapped_column(Integer)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    cost_usd: Mapped[float | None] = mapped_column(Float)
+    finish_status: Mapped[str | None] = mapped_column(String(80))
+    pricing_version: Mapped[str | None] = mapped_column(String(100))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(String(1000))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
+
+
+class ReviewerProviderAttemptRecord(Base):
+    __tablename__ = "reviewer_provider_attempts"
+    __table_args__ = (
+        UniqueConstraint(
+            "invocation_id",
+            "attempt_number",
+            name="uq_reviewer_provider_attempt",
+        ),
+    )
+
+    attempt_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    invocation_id: Mapped[str] = mapped_column(
+        ForeignKey("reviewer_invocations.invocation_id"), nullable=False, index=True
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    provider_request_id: Mapped[str | None] = mapped_column(String(200))
+    provider_response_id: Mapped[str | None] = mapped_column(String(200))
+    finish_status: Mapped[str | None] = mapped_column(String(80))
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cached_input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reasoning_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    pricing_version: Mapped[str | None] = mapped_column(String(100))
+    error_type: Mapped[str | None] = mapped_column(String(100))
+    error_message: Mapped[str | None] = mapped_column(String(1000))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class ReviewResultRecord(Base):
@@ -422,6 +467,7 @@ for immutable_type in (
     RequestSnapshotRecord,
     TaskPackRevisionRecord,
     ReviewResultRecord,
+    ReviewerProviderAttemptRecord,
     AuditEventRecord,
 ):
     event.listen(immutable_type, "before_update", _reject_mutation)

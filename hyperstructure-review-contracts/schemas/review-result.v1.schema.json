@@ -302,9 +302,17 @@
               "model": { "type": ["string", "null"] },
               "prompt_version": { "type": "string" },
               "schema_version": { "type": "string" },
+              "attempt_count": { "type": "integer", "minimum": 1 },
+              "provider_request_id": { "type": ["string", "null"] },
+              "provider_response_id": { "type": ["string", "null"] },
               "tokens": { "type": "number" },
+              "input_tokens": { "type": "number" },
+              "output_tokens": { "type": "number" },
+              "reasoning_tokens": { "type": "number" },
               "latency_ms": { "type": "number" },
-              "cost_usd": { "type": "number" }
+              "cost_usd": { "type": "number" },
+              "finish_status": { "type": ["string", "null"] },
+              "pricing_version": { "type": ["string", "null"] }
             }
           }
         },

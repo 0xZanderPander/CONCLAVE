@@ -78,7 +78,7 @@ def test_worker_dead_letters_a_permanently_invalid_reviewer_response() -> None:
             ReviewOrchestrator(repository, runtime),
         )
 
-        with pytest.raises(RuntimeError, match="after 2 attempts"):
+        with pytest.raises(RuntimeError, match="returned invalid output"):
             worker.run_once(
                 worker_id="worker-invalid",
                 now=datetime.now(UTC),

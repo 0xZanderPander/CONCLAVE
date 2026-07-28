@@ -1,6 +1,6 @@
 import json
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import create_engine, event, select
@@ -17,6 +17,7 @@ from conclave.domain.models import RequestIdentity, ReviewTrigger
 from conclave.ledger.models import (
     ImmutableLedgerRecordError,
     PinnedSessionIdentityError,
+    ReviewerProviderAttemptRecord,
     ReviewerSlotRecord,
     ReviewPlanRevisionRecord,
     ReviewSessionRecord,
@@ -28,6 +29,7 @@ from conclave.ledger.repository import (
 )
 from conclave.paths import design_fixtures_root
 from conclave.plans.models import ReviewPlanRevision
+from conclave.reviewers.runtime import ProviderAttempt, ProviderUsage
 
 
 @pytest.fixture
@@ -168,6 +170,86 @@ def test_invocation_identity_is_unique(
 
     with pytest.raises(LedgerConflictError):
         repository.record_invocation(**{**arguments, "prompt_version": "p2"})
+
+
+def test_provider_attempts_are_immutable_and_update_invocation_telemetry(
+    session_factory: sessionmaker[Session],
+) -> None:
+    repository = LedgerRepository(session_factory)
+    _, identity = _prepare(repository)
+    review_session = repository.create_session(identity)
+    snapshot = repository.store_snapshot(
+        session_id=review_session.session_id,
+        content={"sample": 1},
+    )
+    invocation = repository.record_invocation(
+        session_id=review_session.session_id,
+        slot=ReviewerSlot.A,
+        reviewer_type=ReviewerType.MODEL,
+        stage=ReviewStage.INDEPENDENT,
+        round_number=1,
+        snapshot_hash=snapshot.content_hash,
+        prompt_version="p1",
+        schema_version="v1",
+        provider="openai",
+        model="gpt-test",
+    )
+    now = datetime.now(UTC)
+    attempt = ProviderAttempt(
+        attempt_number=1,
+        status="succeeded",
+        started_at=now,
+        completed_at=now,
+        latency_ms=125,
+        provider_request_id="req_test",
+        provider_response_id="resp_test",
+        finish_status="completed",
+        usage=ProviderUsage(
+            input_tokens=100,
+            cached_input_tokens=10,
+            output_tokens=25,
+            reasoning_tokens=5,
+            total_tokens=125,
+            cost_usd=0.002,
+            pricing_version="test-v1",
+        ),
+    )
+
+    first = repository.record_provider_attempts(
+        invocation_id=invocation.invocation_id,
+        attempts=(attempt,),
+    )
+    second = repository.record_provider_attempts(
+        invocation_id=invocation.invocation_id,
+        attempts=(attempt,),
+    )
+    stored_invocation = repository.list_invocations(review_session.session_id)[0]
+
+    assert first[0].attempt_id == second[0].attempt_id
+    assert stored_invocation.attempt_count == 1
+    assert stored_invocation.total_tokens == 125
+    assert stored_invocation.cost_usd == 0.002
+    assert stored_invocation.provider_response_id == "resp_test"
+    assert [event.event_type for event in repository.list_events(review_session.session_id)] == [
+        "session_created",
+        "snapshot_stored",
+        "reviewer_invocation_created",
+        "provider_attempt_completed",
+    ]
+
+    changed = attempt.model_copy(update={"latency_ms": 126})
+    with pytest.raises(LedgerConflictError):
+        repository.record_provider_attempts(
+            invocation_id=invocation.invocation_id,
+            attempts=(changed,),
+        )
+
+    with session_factory() as db:
+        record = db.get(ReviewerProviderAttemptRecord, first[0].attempt_id)
+        assert record is not None
+        record.status = "permanent_failure"
+        with pytest.raises(ImmutableLedgerRecordError):
+            db.commit()
 
 
 def test_occurrence_id_cannot_be_reused_for_a_new_schedule(

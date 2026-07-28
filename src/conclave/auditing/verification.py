@@ -343,7 +343,11 @@ class AuditVerifier:
                 action.model_dump(mode="json", exclude_none=False)
                 for action in final.actions
             ],
-            "experiment": final.experiment,
+            "experiment": (
+                final.experiment.model_dump(mode="json")
+                if final.experiment is not None
+                else None
+            ),
         }
         if result["recommendation"] != expected_recommendation:
             raise AuditVerificationError(

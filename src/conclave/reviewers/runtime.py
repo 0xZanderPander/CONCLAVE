@@ -1,5 +1,6 @@
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import UTC, datetime
+from time import monotonic
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
@@ -10,6 +11,7 @@ from conclave.domain.enums import (
     ReviewerType,
     ReviewStage,
 )
+from conclave.plans.models import ProviderPolicy
 
 
 class RecommendedAction(BaseModel):
@@ -22,6 +24,19 @@ class RecommendedAction(BaseModel):
     confidence: float = Field(ge=0, le=1)
 
 
+class ExperimentDefinition(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    hypothesis: str = Field(min_length=1)
+    control: str = Field(min_length=1)
+    isolated_change: str = Field(min_length=1)
+    success_metric: str = Field(min_length=1)
+    minimum_evidence: str = Field(min_length=1)
+    exposure_limit: str = Field(min_length=1)
+    stop_conditions: tuple[str, ...] = Field(min_length=1)
+    review_after_hours: float = Field(gt=0)
+
+
 class Assessment(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -29,7 +44,7 @@ class Assessment(BaseModel):
     summary: str = Field(min_length=1)
     claims: tuple[str, ...] = ()
     actions: tuple[RecommendedAction, ...] = ()
-    experiment: dict[str, Any] | None = None
+    experiment: ExperimentDefinition | None = None
     material: bool = False
     risk: Literal["low", "medium", "high"] = "low"
     confidence: float = Field(ge=0, le=1)
@@ -108,15 +123,71 @@ class ReviewCall(BaseModel):
     prior_claims: tuple[str, ...] = ()
     peer_assessments: tuple[PeerAssessment, ...] = ()
     requested_at: datetime
+    provider_policy: ProviderPolicy = Field(default_factory=ProviderPolicy)
+    attempt_number: int = Field(default=1, ge=1)
 
 
 class ReviewerRuntime(Protocol):
-    def review(self, call: ReviewCall) -> ReviewOutput:
-        """Return one structured review output without changing external state."""
+    def review(self, call: ReviewCall) -> "ReviewerExecution":
+        """Return one structured output and safe provider telemetry."""
+
+
+class ProviderUsage(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    input_tokens: int = Field(default=0, ge=0)
+    cached_input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    reasoning_tokens: int = Field(default=0, ge=0)
+    total_tokens: int = Field(default=0, ge=0)
+    cost_usd: float = Field(default=0, ge=0)
+    pricing_version: str | None = None
+
+
+class ProviderCallResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
+
+    output: ReviewOutput | Mapping[str, Any]
+    provider_request_id: str | None = None
+    provider_response_id: str | None = None
+    finish_status: str | None = None
+    usage: ProviderUsage = Field(default_factory=ProviderUsage)
+
+
+class ProviderAttempt(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    attempt_number: int = Field(ge=1)
+    status: Literal[
+        "succeeded",
+        "retryable_failure",
+        "permanent_failure",
+        "invalid_output",
+        "budget_exceeded",
+    ]
+    started_at: datetime
+    completed_at: datetime
+    latency_ms: int = Field(ge=0)
+    provider_request_id: str | None = None
+    provider_response_id: str | None = None
+    finish_status: str | None = None
+    usage: ProviderUsage = Field(default_factory=ProviderUsage)
+    error_type: str | None = None
+    error_message: str | None = None
+
+
+class ReviewerExecution(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    output: ReviewOutput
+    attempts: tuple[ProviderAttempt, ...] = ()
 
 
 class ReviewerProvider(Protocol):
-    def invoke(self, call: ReviewCall) -> ReviewOutput | Mapping[str, Any]:
+    def invoke(
+        self,
+        call: ReviewCall,
+    ) -> ProviderCallResult | ReviewOutput | Mapping[str, Any]:
         """Return a structured response without changing external state."""
 
 
@@ -125,7 +196,38 @@ class UnknownReviewerProviderError(LookupError):
 
 
 class ReviewerProviderExhaustedError(RuntimeError):
-    pass
+    def __init__(self, message: str, attempts: tuple[ProviderAttempt, ...]) -> None:
+        super().__init__(message)
+        self.attempts = attempts
+
+
+class ReviewerProviderError(RuntimeError):
+    error_type = "provider_error"
+    retryable = False
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider_request_id: str | None = None,
+        provider_response_id: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.provider_request_id = provider_request_id
+        self.provider_response_id = provider_response_id
+
+
+class RetryableReviewerProviderError(ReviewerProviderError):
+    error_type = "retryable_provider_error"
+    retryable = True
+
+
+class PermanentReviewerProviderError(ReviewerProviderError):
+    error_type = "permanent_provider_error"
+
+
+class ReviewerBudgetExceededError(PermanentReviewerProviderError):
+    error_type = "budget_exceeded"
 
 
 class ProviderRegistryRuntime:
@@ -144,28 +246,119 @@ class ProviderRegistryRuntime:
         self._assessment_adapter = TypeAdapter(Assessment)
         self._judgment_adapter = TypeAdapter(ReviewerCJudgment)
 
-    def review(self, call: ReviewCall) -> ReviewOutput:
+    def review(self, call: ReviewCall) -> ReviewerExecution:
         try:
             provider = self._providers[call.provider]
         except KeyError as exc:
             raise UnknownReviewerProviderError(
                 f"reviewer provider {call.provider!r} is not registered"
             ) from exc
-        for attempt in range(1, self._max_attempts + 1):
+        maximum_attempts = min(self._max_attempts, call.provider_policy.max_attempts)
+        attempts: list[ProviderAttempt] = []
+        for attempt in range(1, maximum_attempts + 1):
+            attempt_call = call.model_copy(update={"attempt_number": attempt})
+            started_at = datetime.now(UTC)
+            started_clock = monotonic()
             try:
-                response = provider.invoke(call)
+                response = provider.invoke(attempt_call)
+                result = (
+                    response
+                    if isinstance(response, ProviderCallResult)
+                    else ProviderCallResult(output=response)
+                )
                 adapter = (
                     self._judgment_adapter
                     if call.stage == ReviewStage.JUDGING
                     else self._assessment_adapter
                 )
-                return adapter.validate_python(response)
-            except Exception as exc:
-                if attempt == self._max_attempts:
+                output = adapter.validate_python(result.output)
+                completed_at = datetime.now(UTC)
+                latency_ms = max(
+                    int((monotonic() - started_clock) * 1000),
+                    0,
+                )
+                if result.usage.cost_usd > call.provider_policy.max_cost_usd:
+                    attempts.append(
+                        ProviderAttempt(
+                            attempt_number=attempt,
+                            status="budget_exceeded",
+                            started_at=started_at,
+                            completed_at=completed_at,
+                            latency_ms=latency_ms,
+                            provider_request_id=result.provider_request_id,
+                            provider_response_id=result.provider_response_id,
+                            finish_status=result.finish_status,
+                            usage=result.usage,
+                            error_type="budget_exceeded",
+                            error_message="provider response exceeded the approved cost ceiling",
+                        )
+                    )
+                    raise ReviewerProviderExhaustedError(
+                        f"reviewer provider {call.provider!r} exceeded its cost ceiling",
+                        tuple(attempts),
+                    )
+                attempts.append(
+                    ProviderAttempt(
+                        attempt_number=attempt,
+                        status="succeeded",
+                        started_at=started_at,
+                        completed_at=completed_at,
+                        latency_ms=latency_ms,
+                        provider_request_id=result.provider_request_id,
+                        provider_response_id=result.provider_response_id,
+                        finish_status=result.finish_status,
+                        usage=result.usage,
+                    )
+                )
+                return ReviewerExecution(output=output, attempts=tuple(attempts))
+            except ReviewerProviderExhaustedError:
+                raise
+            except ReviewerProviderError as exc:
+                completed_at = datetime.now(UTC)
+                attempts.append(
+                    ProviderAttempt(
+                        attempt_number=attempt,
+                        status=(
+                            "budget_exceeded"
+                            if isinstance(exc, ReviewerBudgetExceededError)
+                            else (
+                                "retryable_failure"
+                                if exc.retryable
+                                else "permanent_failure"
+                            )
+                        ),
+                        started_at=started_at,
+                        completed_at=completed_at,
+                        latency_ms=max(int((monotonic() - started_clock) * 1000), 0),
+                        provider_request_id=exc.provider_request_id,
+                        provider_response_id=exc.provider_response_id,
+                        error_type=exc.error_type,
+                        error_message=str(exc)[:1000],
+                    )
+                )
+                if not exc.retryable or attempt == maximum_attempts:
                     raise ReviewerProviderExhaustedError(
                         f"reviewer provider {call.provider!r} failed "
-                        f"after {self._max_attempts} attempts"
+                        f"after {attempt} attempt{'s' if attempt != 1 else ''}",
+                        tuple(attempts),
                     ) from exc
+            except Exception as exc:
+                completed_at = datetime.now(UTC)
+                attempts.append(
+                    ProviderAttempt(
+                        attempt_number=attempt,
+                        status="invalid_output",
+                        started_at=started_at,
+                        completed_at=completed_at,
+                        latency_ms=max(int((monotonic() - started_clock) * 1000), 0),
+                        error_type="invalid_output",
+                        error_message="provider output failed the reviewer contract",
+                    )
+                )
+                raise ReviewerProviderExhaustedError(
+                    f"reviewer provider {call.provider!r} returned invalid output",
+                    tuple(attempts),
+                ) from exc
         raise AssertionError("provider retry loop exited unexpectedly")
 
 
@@ -179,11 +372,11 @@ class FakeReviewerRuntime:
         self._responses = dict(responses)
         self.calls: list[ReviewCall] = []
 
-    def review(self, call: ReviewCall) -> ReviewOutput:
+    def review(self, call: ReviewCall) -> ReviewerExecution:
         key = (call.slot, call.stage, call.round)
         try:
             response = self._responses[key]
         except KeyError as exc:
             raise LookupError(f"no fake reviewer response registered for {key}") from exc
         self.calls.append(call)
-        return response
+        return ReviewerExecution(output=response)

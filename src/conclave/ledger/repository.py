@@ -27,6 +27,7 @@ from conclave.ledger.models import (
     EventSubscriptionRecord,
     RequestSnapshotRecord,
     ReviewerInvocationRecord,
+    ReviewerProviderAttemptRecord,
     ReviewerSlotRecord,
     ReviewOccurrenceRecord,
     ReviewPlanRecord,
@@ -39,6 +40,7 @@ from conclave.ledger.models import (
 )
 from conclave.orchestration.state_machine import validate_transition
 from conclave.plans.models import ReviewPlanRevision
+from conclave.reviewers.runtime import ProviderAttempt
 
 
 class LedgerConflictError(RuntimeError):
@@ -910,6 +912,153 @@ class LedgerRepository:
             )
             db.flush()
             return record
+
+    def record_provider_attempts(
+        self,
+        *,
+        invocation_id: str,
+        attempts: tuple[ProviderAttempt, ...],
+    ) -> tuple[ReviewerProviderAttemptRecord, ...]:
+        if not attempts:
+            return ()
+        with self._sessions.begin() as db:
+            invocation = db.scalar(
+                select(ReviewerInvocationRecord)
+                .where(ReviewerInvocationRecord.invocation_id == invocation_id)
+                .with_for_update()
+            )
+            if invocation is None:
+                raise LookupError(f"unknown reviewer invocation {invocation_id!r}")
+            records: list[ReviewerProviderAttemptRecord] = []
+            for attempt in attempts:
+                attempt_id = deterministic_id(
+                    "pat",
+                    invocation_id,
+                    attempt.attempt_number,
+                )
+                expected = {
+                    "status": attempt.status,
+                    "provider_request_id": attempt.provider_request_id,
+                    "provider_response_id": attempt.provider_response_id,
+                    "finish_status": attempt.finish_status,
+                    "input_tokens": attempt.usage.input_tokens,
+                    "cached_input_tokens": attempt.usage.cached_input_tokens,
+                    "output_tokens": attempt.usage.output_tokens,
+                    "reasoning_tokens": attempt.usage.reasoning_tokens,
+                    "total_tokens": attempt.usage.total_tokens,
+                    "latency_ms": attempt.latency_ms,
+                    "cost_usd": attempt.usage.cost_usd,
+                    "pricing_version": attempt.usage.pricing_version,
+                    "error_type": attempt.error_type,
+                    "error_message": attempt.error_message,
+                    "started_at": attempt.started_at,
+                    "completed_at": attempt.completed_at,
+                }
+                existing = db.get(ReviewerProviderAttemptRecord, attempt_id)
+                if existing is not None:
+                    scalar_fields = {
+                        key
+                        for key in expected
+                        if key not in {"started_at", "completed_at"}
+                    }
+                    scalar_mismatch = any(
+                        getattr(existing, key) != expected[key]
+                        for key in scalar_fields
+                    )
+                    instant_mismatch = not same_instant(
+                        existing.started_at,
+                        attempt.started_at,
+                    ) or not same_instant(
+                        existing.completed_at,
+                        attempt.completed_at,
+                    )
+                    if scalar_mismatch or instant_mismatch:
+                        raise LedgerConflictError(
+                            "provider attempt identity cannot be reused with new data"
+                        )
+                    records.append(existing)
+                    continue
+                record = ReviewerProviderAttemptRecord(
+                    attempt_id=attempt_id,
+                    invocation_id=invocation_id,
+                    attempt_number=attempt.attempt_number,
+                    **expected,
+                )
+                db.add(record)
+                records.append(record)
+                self._persist_event(
+                    db,
+                    PendingDomainEvent(
+                        event_type=DomainEventType.PROVIDER_ATTEMPT_COMPLETED,
+                        stream_type="review_session",
+                        stream_id=invocation.session_id,
+                        session_id=invocation.session_id,
+                        actor=EventActor(
+                            type=EventActorType.REVIEWER,
+                            id=invocation.reviewer_slot,
+                        ),
+                        stage=ReviewStage(invocation.stage),
+                        round_number=invocation.round,
+                        summary=(
+                            f"Reviewer {invocation.reviewer_slot} provider attempt "
+                            f"{attempt.attempt_number} ended with "
+                            f"{attempt.status.replace('_', ' ')}."
+                        ),
+                        payload={
+                            "invocation_id": invocation_id,
+                            "attempt_number": attempt.attempt_number,
+                            "status": attempt.status,
+                            "provider_request_id": attempt.provider_request_id,
+                            "provider_response_id": attempt.provider_response_id,
+                            "finish_status": attempt.finish_status,
+                            "input_tokens": attempt.usage.input_tokens,
+                            "output_tokens": attempt.usage.output_tokens,
+                            "total_tokens": attempt.usage.total_tokens,
+                            "latency_ms": attempt.latency_ms,
+                            "cost_usd": attempt.usage.cost_usd,
+                            "pricing_version": attempt.usage.pricing_version,
+                            "error_type": attempt.error_type,
+                        },
+                        correlation_id=invocation.session_id,
+                        occurred_at=attempt.completed_at,
+                    ),
+                )
+
+            ordered = sorted(records, key=lambda item: item.attempt_number)
+            last = ordered[-1]
+            invocation.attempt_count = len(ordered)
+            invocation.provider_request_id = last.provider_request_id
+            invocation.provider_response_id = last.provider_response_id
+            invocation.input_tokens = sum(item.input_tokens for item in ordered)
+            invocation.cached_input_tokens = sum(
+                item.cached_input_tokens for item in ordered
+            )
+            invocation.output_tokens = sum(item.output_tokens for item in ordered)
+            invocation.reasoning_tokens = sum(
+                item.reasoning_tokens for item in ordered
+            )
+            invocation.total_tokens = sum(item.total_tokens for item in ordered)
+            invocation.latency_ms = sum(item.latency_ms for item in ordered)
+            invocation.cost_usd = sum(item.cost_usd for item in ordered)
+            invocation.finish_status = last.finish_status
+            invocation.pricing_version = last.pricing_version
+            db.flush()
+            return tuple(ordered)
+
+    def list_provider_attempts(
+        self,
+        invocation_id: str,
+    ) -> tuple[ReviewerProviderAttemptRecord, ...]:
+        with self._sessions() as db:
+            return tuple(
+                db.scalars(
+                    select(ReviewerProviderAttemptRecord)
+                    .where(
+                        ReviewerProviderAttemptRecord.invocation_id == invocation_id
+                    )
+                    .order_by(ReviewerProviderAttemptRecord.attempt_number)
+                )
+            )
 
     def fail_invocation(
         self,

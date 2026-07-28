@@ -250,21 +250,34 @@ without changing the Conclave review protocol.
 
 ## Phase 3: Reviewer A and Baseline
 
+**Status:** implementation complete; one live-provider acceptance run remains.
+The design and limits were approved by Al on 2026-07-27. The normal test suite
+uses deterministic or mocked providers and never calls a live model.
+
 ### Build
 
-- first production provider adapter behind the existing `ReviewerRuntime`
-- versioned reviewer-A role and stance
-- provider-specific assessment generation against the existing validated
+- [x] first production provider adapter behind the existing `ReviewerRuntime`
+- [x] versioned reviewer-A role and stance
+- [x] provider-specific assessment generation against the existing validated
   assessment, claim, recommendation, and experiment contract
-- timeout, retry, token, latency, and cost accounting
+- [x] timeout, retry, token, latency, and cost accounting
+- [x] strict structured output, no tools, no provider storage, and no hidden
+  fixture fallback
+- [x] durable per-attempt telemetry and aggregate invocation metadata
+- [ ] one live reviewer-A acceptance call in the isolated test environment
 
 ### Exit Gate
 
-- One eligible snapshot produces one valid reviewer-A assessment.
-- Weak evidence can produce `collect_more_data`.
-- An experiment includes hypothesis, control, isolated change, success metric,
+- [ ] One eligible snapshot produces one valid reviewer-A assessment from the
+  live provider.
+- [x] Mocked weak evidence produces `collect_more_data`.
+- [x] An experiment must include hypothesis, control, isolated change, success metric,
   minimum evidence, exposure limit, stop conditions, and review time.
-- Invalid model output never enters the ledger as a valid assessment.
+- [x] Invalid model output never enters the ledger as a valid assessment and is
+  not retried as though it were a transient provider failure.
+- [x] Retryable provider failures are bounded to two attempts.
+- [x] Every provider attempt is auditable without storing raw responses or
+  private reasoning.
 
 ## Phase 4A: Reviewer B and Comparison
 
@@ -466,10 +479,11 @@ Its scope is limited to optional ad-performance review:
 - Conclave receives no Meta credential and performs no platform action.
 - The draft future contracts must be reviewed again before any live connection.
 
-## Immediate Next Build: Phase 3 Reviewer A and Baseline
+## Immediate Next Build
 
-1. Select the first real reviewer-provider adapter.
-2. Approve provider timeout, retry, token, latency, cost, and retention limits.
-3. Implement provider-specific accounting without changing the common reviewer
-   or task-pack contracts.
-4. Run the Phase 3 reviewer-A and baseline acceptance gate.
+1. Supply an OpenAI key to the isolated test environment without committing it.
+2. Run and audit the one-call Phase 3 reviewer-A acceptance fixture.
+3. Review and approve the reviewer-B production prompt, independence checks,
+   and provider choice for Phase 4A.
+4. Keep reviewer C on fixtures until its production prompt and two-stage
+   judgment behavior receive separate approval.

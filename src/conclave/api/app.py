@@ -25,7 +25,8 @@ from conclave.ledger.repository import (
     create_schema,
 )
 from conclave.orchestration.service import FixturePath, ReviewOrchestrator
-from conclave.reviewers.development import DevelopmentReviewerRuntime
+from conclave.reviewers.factory import build_reviewer_runtime
+from conclave.reviewers.runtime import ReviewerRuntime
 from conclave.scheduling.service import SchedulerService
 from conclave.scheduling.worker import FixtureWorker
 
@@ -61,6 +62,7 @@ def create_app(
     initialize_schema: bool = False,
     seed_design_fixtures: bool = False,
     authenticator: CallerAuthenticator | None = None,
+    reviewer_runtime: ReviewerRuntime | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_environment()
     engine = engine or create_database_engine(settings)
@@ -77,7 +79,10 @@ def create_app(
         repository,
         max_attempts=settings.worker_max_attempts,
     )
-    orchestrator = ReviewOrchestrator(repository, DevelopmentReviewerRuntime())
+    orchestrator = ReviewOrchestrator(
+        repository,
+        reviewer_runtime or build_reviewer_runtime(settings),
+    )
     worker = FixtureWorker(repository, intake, orchestrator)
     auditor = AuditVerifier(repository)
     if authenticator is None:

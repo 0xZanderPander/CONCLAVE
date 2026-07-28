@@ -11,7 +11,10 @@ from conclave.domain.enums import (
 from conclave.reviewers.runtime import (
     Assessment,
     FakeReviewerRuntime,
+    ProviderCallResult,
     ProviderRegistryRuntime,
+    ProviderUsage,
+    RetryableReviewerProviderError,
     ReviewCall,
     ReviewerCJudgment,
     ReviewerProviderExhaustedError,
@@ -47,7 +50,7 @@ def test_fake_runtime_is_explicit_and_deterministic() -> None:
     runtime = FakeReviewerRuntime({(ReviewerSlot.A, ReviewStage.INDEPENDENT, 1): assessment})
     call = _call()
 
-    assert runtime.review(call) == assessment
+    assert runtime.review(call).output == assessment
     assert runtime.calls == [call]
 
 
@@ -71,7 +74,7 @@ def test_provider_registry_validates_structured_output() -> None:
 
     runtime = ProviderRegistryRuntime({"fake": MappingProvider()})
 
-    assert runtime.review(_call()).evidence_quality == "weak"
+    assert runtime.review(_call()).output.evidence_quality == "weak"
 
 
 def test_provider_registry_rejects_unknown_provider() -> None:
@@ -81,15 +84,15 @@ def test_provider_registry_rejects_unknown_provider() -> None:
         runtime.review(_call("missing"))
 
 
-def test_provider_registry_retries_then_validates_output() -> None:
-    class EventuallyValidProvider:
+def test_provider_registry_retries_only_a_typed_retryable_failure() -> None:
+    class EventuallyAvailableProvider:
         def __init__(self) -> None:
             self.attempts = 0
 
         def invoke(self, _call: ReviewCall) -> dict:
             self.attempts += 1
             if self.attempts == 1:
-                return {"summary": "Incomplete response."}
+                raise RetryableReviewerProviderError("temporary provider failure")
             return {
                 "category": "observe",
                 "summary": "No material change.",
@@ -97,11 +100,17 @@ def test_provider_registry_retries_then_validates_output() -> None:
                 "evidence_quality": "strong",
             }
 
-    provider = EventuallyValidProvider()
+    provider = EventuallyAvailableProvider()
     runtime = ProviderRegistryRuntime({"fake": provider}, max_attempts=2)
 
-    assert runtime.review(_call()).category == RecommendationCategory.OBSERVE
+    execution = runtime.review(_call())
+
+    assert execution.output.category == RecommendationCategory.OBSERVE
     assert provider.attempts == 2
+    assert [attempt.status for attempt in execution.attempts] == [
+        "retryable_failure",
+        "succeeded",
+    ]
 
 
 def test_provider_registry_reports_exhausted_provider_without_leaking_response() -> None:
@@ -111,8 +120,48 @@ def test_provider_registry_reports_exhausted_provider_without_leaking_response()
 
     runtime = ProviderRegistryRuntime({"fake": BrokenProvider()}, max_attempts=2)
 
-    with pytest.raises(ReviewerProviderExhaustedError, match="after 2 attempts"):
+    with pytest.raises(
+        ReviewerProviderExhaustedError,
+        match="returned invalid output",
+    ) as raised:
         runtime.review(_call())
+    assert len(raised.value.attempts) == 1
+    assert raised.value.attempts[0].status == "invalid_output"
+    assert "must not enter" not in str(raised.value)
+    assert "must not enter" not in raised.value.attempts[0].error_message
+
+
+def test_provider_registry_preserves_safe_usage_metadata() -> None:
+    assessment = Assessment(
+        category=RecommendationCategory.OBSERVE,
+        summary="No material change.",
+        confidence=0.8,
+        evidence_quality="strong",
+    )
+
+    class TelemetryProvider:
+        def invoke(self, _call: ReviewCall) -> ProviderCallResult:
+            return ProviderCallResult(
+                output=assessment,
+                provider_request_id="req_public",
+                provider_response_id="resp_public",
+                finish_status="completed",
+                usage=ProviderUsage(
+                    input_tokens=100,
+                    output_tokens=20,
+                    reasoning_tokens=5,
+                    total_tokens=120,
+                    cost_usd=0.001,
+                    pricing_version="test-v1",
+                ),
+            )
+
+    execution = ProviderRegistryRuntime({"fake": TelemetryProvider()}).review(_call())
+
+    assert execution.output == assessment
+    assert execution.attempts[0].provider_request_id == "req_public"
+    assert execution.attempts[0].usage.total_tokens == 120
+    assert execution.attempts[0].usage.pricing_version == "test-v1"
 
 
 def test_reviewer_c_judgment_requires_an_explicit_consistent_verdict() -> None:

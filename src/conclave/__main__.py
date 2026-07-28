@@ -15,7 +15,7 @@ from conclave.fixtures import load_design_plan_revisions
 from conclave.intake import ReviewIntakeService
 from conclave.ledger.repository import LedgerRepository
 from conclave.orchestration.service import FixturePath, ReviewOrchestrator
-from conclave.reviewers.development import DevelopmentReviewerRuntime
+from conclave.reviewers.factory import build_reviewer_runtime
 from conclave.runtime.processes import SchedulerProcess, WorkerProcess
 from conclave.scheduling.service import SchedulerService
 from conclave.scheduling.worker import FixtureWorker
@@ -52,7 +52,7 @@ def _runtime(
     worker = FixtureWorker(
         repository,
         ReviewIntakeService(repository),
-        ReviewOrchestrator(repository, DevelopmentReviewerRuntime()),
+        ReviewOrchestrator(repository, build_reviewer_runtime(settings)),
     )
     return repository, scheduler, worker
 

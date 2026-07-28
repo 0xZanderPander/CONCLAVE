@@ -93,6 +93,7 @@ source = { editable = "." }
 dependencies = [
     { name = "alembic" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "jsonschema" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
@@ -102,7 +103,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -112,6 +112,7 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.14,<2" },
     { name = "fastapi", specifier = ">=0.116,<1" },
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "jsonschema", specifier = ">=4.23,<5" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
     { name = "pydantic", specifier = ">=2.10,<3" },
@@ -121,7 +122,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "pytest", specifier = ">=8.3,<9" },
     { name = "pytest-cov", specifier = ">=6,<7" },
     { name = "ruff", specifier = ">=0.9,<1" },

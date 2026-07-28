@@ -336,7 +336,7 @@ completed work.
 │   ├── ledger/                 # PostgreSQL records, queue, event outbox
 │   ├── orchestration/          # fixed state machine and result construction
 │   ├── plans/                  # versioned plans and schedule calculation
-│   ├── reviewers/              # common runtime and provider registry
+│   ├── reviewers/              # runtime, prompts, factory, provider adapters
 │   ├── runtime/                # persistent scheduler and worker loops
 │   ├── scheduling/             # occurrence expansion and leased work
 │   ├── task_packs/             # registered ontology, eligibility, comparator
@@ -372,13 +372,25 @@ should be added only when their phases begin.
 
 ```text
 review(snapshot, role, round, prior_claims, prompt_version, schema_version)
-    -> assessment
+    -> validated assessment + safe provider-attempt telemetry
 ```
 
-The current runtime records provider, model or reviewer type, slot, stage,
-round, prompt and schema versions, snapshot hash, and terminal status. Token,
-latency, cost, and provider-specific timeout accounting are required before a
-real model provider is approved. There is no silent provider fallback.
+The runtime is selected explicitly as `fixture` or `openai`. Non-local
+deployments cannot start with the fixture runtime, and provider names never
+fall back silently. The first production adapter uses OpenAI Responses for
+reviewer A with `store=false`, no tools, strict JSON Schema output, a versioned
+evidence-only prompt, and no external memory or browsing.
+
+Each plan slot carries an editable provider policy. The initial approved limits
+are two attempts, 90 seconds per attempt, 30,000 input characters, 4,000 output
+tokens, a $0.15 call ceiling, and a versioned pricing configuration. Only typed
+transient provider failures retry. Invalid structured output and permanent
+provider failures stop immediately.
+
+The runtime returns a validated assessment plus safe attempt metadata. The
+ledger stores request and response IDs, token counts, reasoning-token counts,
+latency, cost, finish status, error category, and pricing version. It never
+stores raw provider responses, hidden reasoning, or credentials.
 
 Reviewer C uses two different output contracts. The first invocation has no A/B
 content and returns a normal assessment. The second receives C's stored
@@ -451,8 +463,8 @@ the panel outperformed reviewer A.
 
 ## Persistence
 
-Implemented through migrations `20260726_0006`, `20260726_0007`, and
-`20260726_0008`:
+Implemented through migrations `20260726_0006`, `20260726_0007`,
+`20260726_0008`, and `20260727_0009`:
 
 - `review_plans`
 - `review_plan_revisions`
@@ -461,6 +473,7 @@ Implemented through migrations `20260726_0006`, `20260726_0007`, and
 - `scheduler_work_items`
 - `review_sessions`
 - `reviewer_invocations`
+- `reviewer_provider_attempts`
 - `request_snapshots`
 - `review_results`
 - `runtime_processes`
@@ -475,6 +488,11 @@ Implemented through migrations `20260726_0006`, `20260726_0007`, and
 atomic sequence allocation. Subscriber delivery is tracked separately in
 `event_deliveries`; a delivery failure never changes the committed review or
 event.
+
+Migration `20260727_0009` adds immutable provider-attempt records and aggregate
+telemetry on each reviewer invocation. Provider attempts emit safe typed
+events after the call. The event contains status and accounting metadata, not
+the submitted snapshot or raw provider output.
 
 Delivery is at least once and ordered per stream. Consumers deduplicate by the
 stable `event_id`. The exact transport extension point is

@@ -76,6 +76,8 @@ The central typed registry covers lifecycle operations that exist now:
 - immutable snapshot storage
 - task-pack request validation and derived eligibility facts
 - reviewer invocation creation, completion, and failure
+- provider-attempt completion with safe status, request/response references,
+  token usage, latency, cost, and pricing version
 - structured comparison completion, including distance and hard-trigger facts
 - state transition
 - result creation
@@ -84,6 +86,9 @@ The central typed registry covers lifecycle operations that exist now:
 New event names are added only when the matching domain behavior exists.
 External consumers should use `event_type` and structured metadata rather than
 parsing summaries.
+
+`provider_attempt_completed` never contains an API key, raw provider response,
+submitted snapshot, assessment body, or hidden reasoning.
 
 ## Storage and Ordering
 

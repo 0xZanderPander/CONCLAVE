@@ -181,7 +181,7 @@ async def test_static_bearer_authenticates_scopes_and_caller_ownership() -> None
     )
     app = create_app(
         settings=Settings(
-            environment="production",
+            environment="test",
             database_url="sqlite+pysqlite://",
             caller_auth_mode="static_bearer",
             caller_credentials_json=credentials,

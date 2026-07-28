@@ -142,8 +142,9 @@ def build_review_result(
     trigger = request["review_trigger"]["kind"]
     default_trigger = trigger if trigger != "manual" else "audit_sample"
     triggered_by = list(dict.fromkeys((default_trigger, *route_triggers)))
-    reviewer_metadata = [
-        {
+    reviewer_metadata = []
+    for invocation in invocations:
+        metadata = {
             "slot": invocation.reviewer_slot,
             "reviewer_type": invocation.reviewer_type,
             "stage": invocation.stage,
@@ -153,8 +154,23 @@ def build_review_result(
             "prompt_version": invocation.prompt_version,
             "schema_version": invocation.schema_version,
         }
-        for invocation in invocations
-    ]
+        if invocation.attempt_count:
+            metadata.update(
+                {
+                    "attempt_count": invocation.attempt_count,
+                    "provider_request_id": invocation.provider_request_id,
+                    "provider_response_id": invocation.provider_response_id,
+                    "tokens": invocation.total_tokens or 0,
+                    "input_tokens": invocation.input_tokens or 0,
+                    "output_tokens": invocation.output_tokens or 0,
+                    "reasoning_tokens": invocation.reasoning_tokens or 0,
+                    "latency_ms": invocation.latency_ms or 0,
+                    "cost_usd": invocation.cost_usd or 0,
+                    "finish_status": invocation.finish_status,
+                    "pricing_version": invocation.pricing_version,
+                }
+            )
+        reviewer_metadata.append(metadata)
     tie_breaker = None
     if path == "c_tie_broken":
         if judgment is None:
@@ -197,7 +213,11 @@ def build_review_result(
             "actions": [
                 action.model_dump(mode="json", exclude_none=False) for action in final.actions
             ],
-            "experiment": final.experiment,
+            "experiment": (
+                final.experiment.model_dump(mode="json")
+                if final.experiment is not None
+                else None
+            ),
         },
         "claims": [
             {
