@@ -18,6 +18,18 @@ from conclave.reviewers.runtime import (
 )
 
 _RETRYABLE_STATUS_CODES = {408, 409, 429, 500, 502, 503, 504, 529}
+_SUPPORTED_STRING_FORMATS = {
+    "date-time",
+    "time",
+    "date",
+    "duration",
+    "email",
+    "hostname",
+    "uri",
+    "ipv4",
+    "ipv6",
+    "uuid",
+}
 
 
 def _output_text(document: dict[str, Any]) -> str:
@@ -33,6 +45,97 @@ def _output_text(document: dict[str, Any]) -> str:
             "the provider returned no structured output"
         )
     return "".join(chunks)
+
+
+def _structured_output_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Transform Pydantic JSON Schema to Anthropic's supported strict subset."""
+
+    remaining = dict(schema)
+    transformed: dict[str, Any] = {}
+
+    definitions = remaining.pop("$defs", None)
+    if isinstance(definitions, dict):
+        transformed["$defs"] = {
+            name: _structured_output_schema(definition)
+            for name, definition in definitions.items()
+        }
+
+    reference = remaining.pop("$ref", None)
+    if reference is not None:
+        transformed["$ref"] = reference
+        return transformed
+
+    schema_type = remaining.pop("type", None)
+    any_of = remaining.pop("anyOf", None)
+    one_of = remaining.pop("oneOf", None)
+    all_of = remaining.pop("allOf", None)
+    if isinstance(any_of, list):
+        transformed["anyOf"] = [
+            _structured_output_schema(variant) for variant in any_of
+        ]
+    elif isinstance(one_of, list):
+        transformed["anyOf"] = [
+            _structured_output_schema(variant) for variant in one_of
+        ]
+    elif isinstance(all_of, list):
+        transformed["allOf"] = [
+            _structured_output_schema(variant) for variant in all_of
+        ]
+    elif schema_type is None:
+        raise ValueError(
+            "structured output schemas require type, anyOf, oneOf, or allOf"
+        )
+    else:
+        transformed["type"] = schema_type
+
+    enum = remaining.pop("enum", None)
+    if isinstance(enum, list):
+        transformed["enum"] = enum
+    description = remaining.pop("description", None)
+    if isinstance(description, str):
+        transformed["description"] = description
+    title = remaining.pop("title", None)
+    if isinstance(title, str):
+        transformed["title"] = title
+
+    if schema_type == "object":
+        properties = remaining.pop("properties", {})
+        transformed["properties"] = {
+            name: _structured_output_schema(property_schema)
+            for name, property_schema in properties.items()
+        }
+        remaining.pop("additionalProperties", None)
+        transformed["additionalProperties"] = False
+        required = remaining.pop("required", None)
+        if isinstance(required, list):
+            transformed["required"] = required
+    elif schema_type == "string":
+        string_format = remaining.pop("format", None)
+        if string_format in _SUPPORTED_STRING_FORMATS:
+            transformed["format"] = string_format
+        elif string_format is not None:
+            remaining["format"] = string_format
+    elif schema_type == "array":
+        items = remaining.pop("items", None)
+        if isinstance(items, dict):
+            transformed["items"] = _structured_output_schema(items)
+        min_items = remaining.pop("minItems", None)
+        if min_items in {0, 1}:
+            transformed["minItems"] = min_items
+        elif min_items is not None:
+            remaining["minItems"] = min_items
+
+    if remaining:
+        constraint_summary = "{" + ", ".join(
+            f"{key}: {value}" for key, value in remaining.items()
+        ) + "}"
+        existing_description = transformed.get("description")
+        transformed["description"] = (
+            f"{existing_description}\n\n{constraint_summary}"
+            if isinstance(existing_description, str)
+            else constraint_summary
+        )
+    return transformed
 
 
 class AnthropicMessagesProvider:
@@ -106,18 +209,26 @@ class AnthropicMessagesProvider:
                 "the reviewer request exceeds its approved preflight cost ceiling"
             )
 
+        output_config: dict[str, Any] = {
+            "format": {
+                "type": "json_schema",
+                "schema": _structured_output_schema(
+                    contract.output_model.model_json_schema()
+                ),
+            }
+        }
+        if policy.reasoning_effort != "none":
+            output_config["effort"] = policy.reasoning_effort
+
         payload = {
             "model": call.model,
             "system": contract.instructions,
             "messages": [{"role": "user", "content": input_text}],
             "max_tokens": policy.max_output_tokens,
-            "output_config": {
-                "format": {
-                    "type": "json_schema",
-                    "schema": contract.output_model.model_json_schema(),
-                }
-            },
+            "output_config": output_config,
         }
+        if policy.reasoning_effort == "none":
+            payload["thinking"] = {"type": "disabled"}
         client_request_id = (
             f"{call.session_id}:{call.slot.value}:{call.stage.value}:"
             f"{call.round}:{call.attempt_number}"

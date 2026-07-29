@@ -406,10 +406,22 @@ assessment, and C's later judgment.
 
 The second adapter uses Anthropic Messages with the same approved contracts,
 structured JSON Schema output, no tools, and no provider conversation state.
-It is fixture-tested but not live-tested. Its credential passed a
-no-generation model-list authentication check on 2026-07-28. The first mixed
-panel will place OpenAI in A and C and Claude in B, with at most two Claude
-calls if cross review is required.
+Its credential passed a no-generation model-list authentication check on
+2026-07-28. Its first single-attempt review was rejected with HTTP 400 before
+generation, so the live gate remained open at that point. The request exposed a
+transport-specific boundary: raw Pydantic constraints are not all supported by
+Anthropic's structured-output grammar. The adapter now transforms the
+provider-facing schema to Anthropic's supported subset, retains full Conclave
+validation after the response, and maps the pinned reasoning-effort policy to
+Anthropic's request controls. A separately approved corrected one-attempt
+review passed the complete A-only path with valid structured output, 6,333
+tokens, 44,478 ms provider latency, and $0.022018 computed cost. The first
+bounded mixed panel then passed with OpenAI in A and C and Claude in B. It used
+one attempt per stage, exactly two Claude calls, 39,900 total tokens, 113,898
+ms summed provider latency, and $0.1731145 computed cost. C selected B's final
+assessment while the recommendation category remained unchanged. This proves
+the provider rails and approved contracts, not permanent reviewer quality or
+panel value.
 
 The Google credential also passed a no-generation authentication check.
 A Gemini adapter is not implemented. It must use the same provider contract,
@@ -525,6 +537,13 @@ The MVP reports panel-delta rate, caller preference when supplied, additional
 issue catches, cross-review resolution rate, reviewer-C rate, caller override
 rate, latency, and cost. These are panel-value indicators, not causal proof that
 the panel outperformed reviewer A.
+
+The current `review-result/v1` baseline field marks `changed_by_panel` only when
+the recommendation category changes. The first mixed panel selected B over A
+while both categories were `operational_change`, so that flag remained false.
+Phase 6 evaluation must compare the complete validated A baseline with the
+complete selected panel result rather than treating this category-only flag as
+the panel-change metric.
 
 ## Persistence
 

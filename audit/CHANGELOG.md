@@ -9,6 +9,9 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 
 | Date | Rev | Requested by | Applied by | Summary |
 |---|---|---|---|---|
+| 2026-07-28 | r22 | Al | Codex | Passed the bounded OpenAI-A/Claude-B/OpenAI-C panel with six one-attempt stages and exactly two Claude calls |
+| 2026-07-28 | r21 | Al | Codex | Passed the corrected one-attempt Claude A-only acceptance while keeping mixed-panel egress separately gated |
+| 2026-07-28 | r20 | Al | Codex | Stopped after the first Claude HTTP 400, diagnosed Anthropic schema incompatibility, and hardened the adapter without retrying |
 | 2026-07-28 | r19 | Al | Codex | Recentered the canonical plan on provider-diversity validation, Phase 6 feedback evaluation, and the Phase 7 fixture pilot |
 | 2026-07-28 | r18 | Al | Codex | Passed the complete bounded live OpenAI Phase 4B panel and closed its release gate |
 | 2026-07-28 | r17 | Al | Codex | Added the second provider adapter and hardened production evidence paths and stage-specific limits from bounded live testing |
@@ -28,6 +31,165 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 | 2026-07-24 | r3 | Al | Codex | Separated Marketing domain ownership from the Conclave kernel; replaced direct Meta, Telegram, policy, outcome, and learning ownership with versioned request/result/feedback contracts |
 | 2026-07-24 | r2 | Al | Conclave assistant (Cowork session) | Three-reviewer panel, cadence-based ping-pong, tolerance-triggered cross review, tie-breaker, baseline, configurable adjudicator, Hermes learning seam, domain contract, testable Phase 0 gate |
 | 2026-07-14 | r1 | Al | Al | Initial Marketing-first, read-only MVP design (baseline of these docs) |
+
+---
+
+## r22 — 2026-07-28
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** bounded mixed-provider live acceptance, provider comparison,
+canonical status documents, local and PostgreSQL verification, and audit
+history
+
+### Acceptance result
+
+1. The approved `c_tie_broken` synthetic-fixture route completed all six
+   production stages with one provider attempt each.
+2. A independent, A cross review, C blind assessment, and C judgment used
+   OpenAI `gpt-5.6-terra`.
+3. B independent and B cross review used Anthropic `claude-sonnet-5`.
+4. Claude was called exactly twice. No retry, fallback, provider substitution,
+   or extra discussion round occurred.
+5. Every response passed the stage-specific structured contract, claim and
+   evidence validation, deterministic task-pack normalization, result
+   construction, and caller-decision boundary.
+6. Aggregate telemetry was 39,900 tokens, 113,898 ms summed provider latency,
+   and $0.1731145 computed cost. OpenAI accounted for 22,856 tokens,
+   47,775 ms, and $0.1154025; Claude accounted for 17,044 tokens, 66,123 ms,
+   and $0.057712.
+
+### Structured comparison
+
+1. A and B independently selected `operational_change` and adequate evidence.
+   A reported medium risk, 0.78 confidence, three claims, and one action. B
+   reported low risk, 0.62 confidence, six claims, and two actions.
+2. After cross review, A retained medium risk and 0.78 confidence. B retained
+   low risk and moved to 0.60 confidence.
+3. C's blind assessment also selected `operational_change`, adequate evidence,
+   medium risk, and 0.80 confidence with five claims and two actions.
+4. C's judgment selected B at 0.73 confidence. The final result remained
+   `caller_decision_required`.
+5. A's category and the final category matched, so the existing
+   category-only `changed_by_panel` field remained false even though the final
+   selected assessment changed from A to B. Phase 6 must compare complete
+   assessments for panel-change reporting.
+
+### Interpretation
+
+- The run proves bounded cross-provider compatibility for the approved
+  Conclave contracts.
+- It does not prove that Claude should permanently occupy B, that the panel
+  improved the recommendation, or that any difference is causal.
+- Gemini compatibility and the three-provider comparison remain open.
+
+### Verification
+
+- Ruff passes.
+- The complete local suite passes with 113 tests and 9 expected opt-in skips.
+- All four isolated PostgreSQL event-stream, full-flow, and worker-locking
+  integration cases pass and clean up their synthetic rows.
+
+### Guardrails preserved
+
+- Reviewer A and B were blind in their first round and shared one immutable
+  snapshot.
+- Cross review remained one bounded round.
+- C1 remained blind and C2 received only approved structured context.
+- No raw response, hidden reasoning, credential, campaign authority, approval,
+  execution, or Marketing OS connection was stored or added.
+
+---
+
+## r21 — 2026-07-28
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** corrected Anthropic live acceptance, mixed-panel acceptance harness,
+canonical status documents, and audit history
+
+### What changed
+
+1. Al separately authorized exactly one corrected Anthropic attempt after the
+   stopped HTTP 400 and schema hardening.
+2. `claude-sonnet-5` returned a contract-valid `assessment-v2` in one attempt
+   on the A-only synthetic-fixture route.
+3. Safe telemetry recorded 44,478 ms provider latency, 5,164 input tokens,
+   1,169 output tokens, 6,333 total tokens, and $0.022018 computed cost under
+   the active introductory pricing.
+4. The acceptance stored no raw provider response or hidden reasoning and
+   performed no retry, substitution, cross review, or provider expansion.
+5. A mixed-panel harness now statically assigns OpenAI to A/C and Anthropic to
+   B, permits one attempt per stage, caps Claude at its independent and single
+   cross-review calls, and has an aggregate $0.93 ceiling.
+6. The mixed panel was not executed because multi-provider egress requires
+   separate explicit approval.
+
+### Remaining gate
+
+- The bounded mixed panel remains pending.
+- Passing Claude compatibility is not evidence of reviewer quality or panel
+  value and does not assign Claude a permanent slot.
+- Gemini adapter and free-tier acceptance remain pending.
+- No commit or push occurs until the complete checkpoint is green.
+
+---
+
+## r20 — 2026-07-28
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** Anthropic adapter, opt-in live acceptance harness, provider tests,
+`README.md`, `MVP_project_architecture.md`, `MVP_build_roadmap.md`,
+`PHASE_4B_CONTRACT_PROPOSAL.md`, and `audit/CHANGELOG.md`
+
+### What happened
+
+1. Official Anthropic documentation confirmed `claude-sonnet-5`, current
+   structured-output support, low-effort request control, and the active
+   introductory pricing.
+2. The first live A-only acceptance used exactly one provider attempt, low
+   effort, a 4,000-token output bound, and a $0.10 request ceiling.
+3. Anthropic rejected the request with permanent HTTP 400 before generation.
+   The mixed panel was not started and the request was not retried.
+4. The provider returned no generated-token usage. Conclave computed $0.00
+   model cost for the failed request. The isolated test completed in 7.9
+   seconds end to end; its per-provider latency record was not retained after
+   the ephemeral SQLite harness disposed the failed session.
+
+### Diagnosis and hardening
+
+1. The raw Pydantic schema contained constraints such as `minimum`,
+   `maximum`, and `minLength` that Anthropic documents as unsupported in raw
+   structured-output schemas.
+2. The Anthropic adapter now transforms the provider-facing schema using the
+   documented supported subset: recursive definitions and unions remain,
+   unsupported constraints move into descriptions, and every object forbids
+   additional properties.
+3. Conclave still validates any returned document against the complete
+   original Pydantic and task-pack contracts.
+4. The adapter now honors pinned reasoning effort, including explicit
+   thinking disablement when policy selects `none`.
+
+### Verification and remaining risk
+
+- Ruff passes.
+- The complete local suite passes with 113 tests and 8 expected opt-in skips.
+- No PostgreSQL persistence changed, so no new hosted persistence run was
+  required for this failed provider checkpoint.
+- The exact provider error message was intentionally not persisted; the
+  unsupported raw schema is a concrete compatibility defect and the most
+  likely cause of the HTTP 400, but a later separately approved acceptance is
+  required to confirm the fix.
+- Checkpoint 1 is not green. No commit, push, mixed panel, or provider-slot
+  assignment is authorized from this result.
+
+### Not changed
+
+- One bounded cross-review round, reviewer independence, C1 blindness, the
+  caller-decision boundary, and no-chain-of-thought storage remain intact.
+- Marketing OS, Meta, campaign execution, approval, and spend authority remain
+  out of scope.
 
 ---
 

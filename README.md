@@ -34,8 +34,18 @@ within its $0.90 aggregate ceiling.
 OpenAI supports the complete approved panel contract. An Anthropic Messages
 adapter is also available behind the same provider-neutral interface. Anthropic
 and Google credentials passed no-generation authentication checks on
-2026-07-28. Anthropic has not yet completed a live review call, and the Gemini
-adapter is not implemented.
+2026-07-28. The first single-attempt Anthropic review was rejected with HTTP
+400 before generation. Offline diagnosis found that the adapter had sent raw
+Pydantic constraints outside Anthropic's supported structured-output subset.
+The adapter now transforms the provider-facing schema while retaining
+Conclave's full local validation and explicitly applies the configured
+reasoning effort. A separately approved corrected one-attempt review then
+passed the complete A-only `assessment-v2` path for $0.022018. No automatic
+provider retry was used. The bounded OpenAI-A/Claude-B/OpenAI-C mixed panel
+then passed all six stages with one attempt each, exactly two Claude calls, and
+$0.1731145 total computed cost. Reviewer C selected B while the recommendation
+category remained `operational_change`; the result stayed
+`caller_decision_required`. The Gemini adapter is not implemented.
 
 Conclave does not depend on Marketing OS, and Marketing OS does not depend on
 Conclave.
@@ -484,13 +494,10 @@ Completed foundation:
 
 Next:
 
-1. run one low-cost Anthropic independent-review acceptance call
-2. run one bounded mixed panel with OpenAI in A and C and Claude in B, allowing
-   no more than two Claude calls
-3. implement and mock-test a Gemini adapter behind `ReviewerRuntime`
-4. run one free-tier Gemini independent-review acceptance call
-5. compare provider outputs before assigning permanent reviewer positions
-6. build Phase 6 durable feedback linkage and panel-value evaluation
+1. implement and mock-test a Gemini adapter behind `ReviewerRuntime`
+2. run one free-tier Gemini independent-review acceptance call
+3. compare provider outputs before assigning permanent reviewer positions
+4. build Phase 6 durable feedback linkage and panel-value evaluation
 
 Non-local API mode requires explicit bearer authentication and caller scopes.
 Local fixture mode remains available only in development and test.

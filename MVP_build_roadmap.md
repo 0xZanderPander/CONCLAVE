@@ -399,18 +399,24 @@ policy remain deferred; polling is the current MVP return path.
 
 ## Provider Diversity Gate Before Phase 6
 
-**Status:** credentials authenticated without generation. The Anthropic adapter
-passes mocked contract tests. The Gemini adapter and live provider comparisons
-remain.
+**Status:** credentials authenticated without generation. The first bounded
+Anthropic review attempt was rejected with HTTP 400 before generation, and no
+automatic retry or mixed panel was run. The adapter now transforms Pydantic
+schemas to Anthropic's supported structured-output subset and honors the
+configured reasoning effort. A separately approved corrected one-attempt
+review passed the A-only `assessment-v2` path for $0.022018. The mixed panel,
+using OpenAI in A/C and Claude in B, then passed all six one-attempt stages
+with exactly two Claude calls and $0.1731145 total computed cost. The Gemini
+adapter and three-provider comparison remain.
 
 ### Build
 
 - [x] Anthropic credential authentication check without a model generation
 - [x] Google credential authentication check without a model generation
 - [x] Anthropic adapter behind the common reviewer interface
-- [ ] one low-cost Anthropic independent-review acceptance call
-- [ ] one bounded mixed panel with OpenAI in A and C and Claude in B
-- [ ] no more than two Claude calls in that mixed-panel acceptance run
+- [x] one low-cost Anthropic independent-review acceptance call
+- [x] one bounded mixed panel with OpenAI in A and C and Claude in B
+- [x] no more than two Claude calls in that mixed-panel acceptance run
 - [ ] Gemini adapter behind the common reviewer interface
 - [ ] mocked Gemini contract, retry, telemetry, and failure tests
 - [ ] one free-tier Gemini independent-review acceptance call
@@ -419,6 +425,67 @@ remain.
 
 Passing this gate proves provider compatibility and creates evidence for slot
 selection. It does not prove that multiple providers improve decisions.
+
+### First Anthropic attempt — 2026-07-28
+
+- Route: A-only independent review using `claude-sonnet-5`.
+- Bound: one provider attempt, low effort, 4,000 output tokens, and a $0.10
+  request ceiling using the active introductory pricing.
+- Result: permanent HTTP 400 before generation; no structured reviewer output
+  or token usage was returned.
+- Conclave accounting: zero generated tokens and $0.00 computed model cost.
+- End-to-end test wall time: 7.9 seconds. Per-provider latency was not retained
+  after the isolated SQLite acceptance harness disposed its failed session.
+- Diagnosis: the provider-facing schema contained raw Pydantic constraints
+  that Anthropic documents as unsupported for direct structured-output
+  requests. The adapter now performs the documented provider-specific schema
+  transformation and still validates the response against Conclave's original
+  contract.
+- Guardrail result: no silent retry, provider substitution, cross review, or
+  mixed-panel call occurred.
+
+### Corrected Anthropic acceptance — 2026-07-28
+
+- Authorization: a separate explicit approval superseded the original
+  one-attempt stop only for one corrected request.
+- Route: A-only independent review using `claude-sonnet-5`.
+- Result: one successful provider attempt and one contract-valid
+  `assessment-v2`; no raw response or hidden reasoning was stored.
+- Telemetry: 44,478 ms provider latency, 5,164 input tokens, 1,169 output
+  tokens, 6,333 total tokens, and $0.022018 computed cost under the active
+  introductory pricing.
+- Guardrail result: no retry, provider substitution, cross review, or mixed
+  panel occurred.
+
+### Mixed OpenAI/Claude/OpenAI panel — 2026-07-28
+
+- Route: the bounded `c_tie_broken` acceptance path using the synthetic
+  surviving-conflict fixture.
+- Calls: six successful structured stages with exactly one attempt each:
+  OpenAI A independent, Claude B independent, OpenAI A cross review, Claude B
+  cross review, OpenAI C blind assessment, and OpenAI C judgment.
+- Claude bound: exactly two calls, as approved; no retry or provider
+  substitution occurred.
+- Aggregate telemetry: 39,900 tokens, 113,898 ms summed provider latency, and
+  $0.1731145 computed cost.
+- OpenAI telemetry: four calls, 22,856 tokens, 47,775 ms, and $0.1154025.
+- Claude telemetry: two calls, 17,044 tokens, 66,123 ms, and $0.057712.
+- Structured comparison: A and B independently recommended
+  `operational_change` with adequate evidence. A assessed medium risk at 0.78
+  confidence with three claims and one action; B assessed low risk at 0.62
+  confidence with six claims and two actions.
+- Cross review: A retained medium risk and 0.78 confidence; B retained low risk
+  and moved from 0.62 to 0.60 confidence.
+- Reviewer C: the blind assessment also recommended `operational_change` with
+  adequate evidence, medium risk, 0.80 confidence, five claims, and two
+  actions. C then selected B at 0.73 judgment confidence.
+- Result: `caller_decision_required`. The category did not change from A's
+  baseline, but the selected final assessment did. The current public
+  `changed_by_panel` flag compares category only and therefore remained false;
+  Phase 6 must not treat it alone as the full panel-change indicator.
+- Interpretation: this proves transport and contract compatibility only. It is
+  not evidence that Claude is a better B, that the panel improved the
+  recommendation, or that any observed difference is causal.
 
 ## Phase 6: External Feedback and Reviewer Evaluation
 
@@ -557,13 +624,10 @@ Its scope is limited to optional ad-performance review:
 
 ## Immediate Next Build
 
-1. Run one low-cost Anthropic independent-review acceptance call.
-2. Run one bounded mixed panel with OpenAI in A and C and Claude in B, allowing
-   no more than two Claude calls.
-3. Build and mock-test the Gemini adapter.
-4. Run one free-tier Gemini independent-review acceptance call.
-5. Compare all three providers before assigning permanent reviewer positions.
-6. Implement Phase 6 feedback persistence, API linkage, classification,
+1. Build and mock-test the Gemini adapter.
+2. Run one free-tier Gemini independent-review acceptance call.
+3. Compare all three providers before assigning permanent reviewer positions.
+4. Implement Phase 6 feedback persistence, API linkage, classification,
    confounders, evidence quality, baseline-versus-panel comparison, and
    reviewer/panel indicators.
-7. Run the Phase 7 pilot with at least 30 synthetic or replayed cases.
+5. Run the Phase 7 pilot with at least 30 synthetic or replayed cases.

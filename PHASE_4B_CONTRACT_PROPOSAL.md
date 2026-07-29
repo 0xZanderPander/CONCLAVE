@@ -352,3 +352,14 @@ aggregate ceiling.
 Phase 4B has no remaining release gate. Anthropic and Google authentication
 checks, provider-diversity evaluation, and Gemini adapter work belong to the
 separate post-Phase-4B provider-diversity gate.
+
+The first post-Phase-4B Anthropic review attempt on 2026-07-28 was rejected
+with HTTP 400 before generation. It did not reopen Phase 4B: the failure was in
+the Anthropic transport's provider-facing JSON Schema representation, not the
+approved Conclave contract. The adapter now performs Anthropic-specific schema
+transformation while preserving full local contract validation. A separately
+approved corrected one-attempt A-only acceptance then passed. The separately
+approved OpenAI-A/Claude-B/OpenAI-C mixed panel also passed all six bounded
+stages with one attempt each and exactly two Claude calls. These results close
+the Claude compatibility portion of the post-Phase-4B provider-diversity gate;
+they do not assign permanent reviewer positions or prove panel value.
