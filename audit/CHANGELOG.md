@@ -9,6 +9,7 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 
 | Date | Rev | Requested by | Applied by | Summary |
 |---|---|---|---|---|
+| 2026-07-28 | r18 | Al | Codex | Passed the complete bounded live OpenAI Phase 4B panel and closed its release gate |
 | 2026-07-28 | r17 | Al | Codex | Added the second provider adapter and hardened production evidence paths and stage-specific limits from bounded live testing |
 | 2026-07-28 | r16 | Al | Codex | Implemented typed A/B cross review, two-stage C production contracts, and controlled cross-review recovery |
 | 2026-07-28 | r15 | Al | Codex | Implemented assessment-v2 compatibility, validated claim provenance, and added the auditable cross_review_failed terminal state |
@@ -26,6 +27,33 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 | 2026-07-24 | r3 | Al | Codex | Separated Marketing domain ownership from the Conclave kernel; replaced direct Meta, Telegram, policy, outcome, and learning ownership with versioned request/result/feedback contracts |
 | 2026-07-24 | r2 | Al | Conclave assistant (Cowork session) | Three-reviewer panel, cadence-based ping-pong, tolerance-triggered cross review, tie-breaker, baseline, configurable adjudicator, Hermes learning seam, domain contract, testable Phase 0 gate |
 | 2026-07-14 | r1 | Al | Al | Initial Marketing-first, read-only MVP design (baseline of these docs) |
+
+---
+
+## r18 — 2026-07-28
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** `README.md`, `MVP_build_roadmap.md`,
+`PHASE_4B_CONTRACT_PROPOSAL.md`, `audit/CHANGELOG.md`
+
+### What changed
+
+1. The complete live Phase 4B acceptance path passed using OpenAI for all six
+   bounded calls: A independent, B independent, A cross review, B cross review,
+   C blind assessment, and C judgment.
+2. Every production response passed the structured contract, canonical evidence
+   validation, deterministic normalization, result construction, and
+   caller-decision boundary.
+3. The run stayed inside the test's $0.90 aggregate cost ceiling.
+4. Phase 4B is now marked complete. Genuine perspective-diversity evaluation
+   remains separate and requires another provider credential.
+
+### Not changed
+
+- Passing a same-provider panel proves the production plumbing and contracts; it
+  does not prove that the panel outperforms one model.
+- Conclave still does not execute or own the caller's decision.
 
 ---
 

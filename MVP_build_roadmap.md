@@ -320,8 +320,8 @@ lever, not a requirement baked into the Conclave kernel.
 
 ## Phase 4B: Cross Review and Tie-Breaker
 
-**Status:** implementation and hosted PostgreSQL verification complete; the
-final live release gate remains.
+**Status:** complete. Local, hosted PostgreSQL, and bounded live OpenAI
+acceptance gates pass.
 Automatic routing, typed one-round cross review, blind C assessment, explicit C
 judgment, deterministic result selection, caller-decision handling, and
 controlled failed-cross-review recovery are covered by local tests.
@@ -350,7 +350,7 @@ recorded in [the Phase 4B contract](PHASE_4B_CONTRACT_PROPOSAL.md).
 - [x] controlled operator recovery that preserves provider-attempt history
 - [x] second provider adapter with deterministic structured-output tests
 - [x] stage-specific provider limits for the larger C2 judgment context
-- [ ] opt-in live Phase 4B acceptance case
+- [x] opt-in live Phase 4B acceptance case
 
 ### Exit Gate
 
@@ -366,7 +366,7 @@ recorded in [the Phase 4B contract](PHASE_4B_CONTRACT_PROPOSAL.md).
   terminal state.
 - [x] An operator can reopen only the failed cross-review invocation without
   erasing prior attempts or starting another discussion round.
-- [ ] Production provider output passes the complete A/B/cross-review/C path.
+- [x] Production provider output passes the complete A/B/cross-review/C path.
 
 ## Phase 5: Structured Result Return
 
@@ -534,8 +534,6 @@ Its scope is limited to optional ad-performance review:
 
 ## Immediate Next Build
 
-1. Complete one bounded same-provider live conflict case; prior bounded attempts
-   found and hardened evidence-path and C2 input-limit boundaries.
-2. Configure a separate Anthropic key.
-3. Run cross-provider fixtures after that credential is configured before
+1. Configure a separate Anthropic key.
+2. Run cross-provider fixtures after that credential is configured before
    claiming perspective-diversity benefit.

@@ -29,6 +29,8 @@ Phase 4B implements `assessment-v2` structured claims, exact snapshot-reference
 validation, one typed A/B cross-review response, Reviewer C's blind assessment
 and separate judgment, and controlled operator recovery from
 `cross_review_failed`. Historical `assessment-v1` records remain readable.
+The complete six-call OpenAI Phase 4B acceptance panel passed on 2026-07-28
+within its $0.90 aggregate ceiling.
 OpenAI supports the complete approved panel contract. An Anthropic Messages
 adapter is also available behind the same provider-neutral interface for future
 cross-provider evaluation; no Anthropic live claim is made without its own key
@@ -481,9 +483,8 @@ Completed foundation:
 
 Next:
 
-1. finish one bounded same-provider live A/B/cross-review/C test
-2. configure a separate Anthropic key
-3. run cross-provider evaluation only after that separate provider credential is
+1. configure a separate Anthropic key
+2. run cross-provider evaluation only after that separate provider credential is
    configured
 
 Non-local API mode requires explicit bearer authentication and caller scopes.
