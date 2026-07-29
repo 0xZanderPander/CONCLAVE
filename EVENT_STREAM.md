@@ -81,6 +81,10 @@ The central typed registry covers lifecycle operations that exist now:
 - structured comparison completion, including distance and hard-trigger facts
 - state transition
 - result creation
+- immutable caller-feedback linkage with classification and reference-presence
+  facts, but without copied opaque reference values
+- immutable directional reviewer-evaluation candidate creation, including
+  source hashes and safe aggregate indicators
 - runtime process start and stop
 
 New event names are added only when the matching domain behavior exists.
@@ -89,6 +93,15 @@ parsing summaries.
 
 `provider_attempt_completed` never contains an API key, raw provider response,
 submitted snapshot, assessment body, or hidden reasoning.
+
+`feedback_recorded` never contains decision, action, or outcome reference
+values. It records only the feedback hash, classification, evidence version,
+reference-presence flags, and other safe evaluation inputs.
+
+`evaluation_candidate_recorded` never contains opaque caller references,
+assessment bodies, or causal claims. It records source and candidate hashes,
+the route, `directional_only` interpretation, and safe boolean/count
+indicators.
 
 ## Storage and Ordering
 

@@ -9,6 +9,8 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 
 | Date | Rev | Requested by | Applied by | Summary |
 |---|---|---|---|---|
+| 2026-07-28 | r25 | Al | Codex | Added immutable Phase 6 reviewer-evaluation candidates, complete baseline/result comparison, directional route metrics, retrieval APIs, and migration 0011 |
+| 2026-07-28 | r24 | Al | Codex | Added the Phase 6 immutable feedback foundation, authenticated intake, idempotency, safe events, audit reconstruction, and migration 0010 |
 | 2026-07-28 | r23 | Al | Codex | Added the Gemini Interactions adapter and passed its explicitly approved one-attempt free-tier acceptance |
 | 2026-07-28 | r22 | Al | Codex | Passed the bounded OpenAI-A/Claude-B/OpenAI-C panel with six one-attempt stages and exactly two Claude calls |
 | 2026-07-28 | r21 | Al | Codex | Passed the corrected one-attempt Claude A-only acceptance while keeping mixed-panel egress separately gated |
@@ -32,6 +34,110 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 | 2026-07-24 | r3 | Al | Codex | Separated Marketing domain ownership from the Conclave kernel; replaced direct Meta, Telegram, policy, outcome, and learning ownership with versioned request/result/feedback contracts |
 | 2026-07-24 | r2 | Al | Conclave assistant (Cowork session) | Three-reviewer panel, cadence-based ping-pong, tolerance-triggered cross review, tie-breaker, baseline, configurable adjudicator, Hermes learning seam, domain contract, testable Phase 0 gate |
 | 2026-07-14 | r1 | Al | Al | Initial Marketing-first, read-only MVP design (baseline of these docs) |
+
+---
+
+## r25 — 2026-07-28
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** immutable reviewer-evaluation candidates, baseline/result
+fingerprinting, directional indicators, retrieval APIs, event/audit
+reconstruction, migration `20260728_0011`, and local/PostgreSQL tests
+
+### Implementation
+
+1. Added one immutable, versioned evaluation candidate per review session,
+   linked to the exact result, feedback, evidence, and route.
+2. Compared equivalent complete public assessment projections for Reviewer A's
+   baseline and the selected final result rather than relying on the existing
+   category-only `changed_by_panel` field.
+3. Added explicitly directional panel-change, caller-preference, additional
+   issue, cross-review-resolution, reviewer-C, caller-override, outcome,
+   latency, and cost indicators.
+   Caller-preference rate excludes records marked `not_comparable`, while
+   cross-review resolution uses only cross-review-invoked candidates as its
+   denominator.
+4. Added authenticated feedback and evaluation retrieval plus aggregate
+   directional metrics with latency and cost grouped by route.
+5. Added the safe `evaluation_candidate_recorded` event and reconstructive
+   transition from `feedback_pending` to `evaluated`.
+6. Added migration `20260728_0011` with an indexed foreign key, source hashes,
+   fixed-precision cost, non-negative and route constraints, RLS, and revoked
+   Data API roles.
+
+### Verification
+
+- Focused evaluation, API, feedback, and audit tests pass.
+- Ruff passes.
+- The complete local suite passes with 125 tests and 11 expected opt-in skips.
+- A clean SQLite Alembic upgrade reaches `20260728_0011`.
+- The PostgreSQL test now covers concurrent feedback and evaluation replay,
+  RLS and role checks for both Phase 6 tables, audit reconstruction, and
+  explicit zero-row cleanup.
+- Current hosted advisors report only expected informational RLS-without-policy
+  notices for the private server-only ledger and unused-index notices on the
+  low-volume pre-Phase-6 schema; there are no warning or error findings.
+- Hosted execution remains open: the Supabase migration ledger still ends at
+  0009, and Codex's Supabase action-approval service continues to reject write
+  calls with an internal `input[19].namespace` error before project execution.
+
+### Interpretation boundary
+
+- Every metric is labeled `directional_only`.
+- Panel change is descriptive comparison, not a causal estimate of panel value.
+- Caller feedback remains external evidence rather than trusted domain truth.
+- Conclave does not reinterpret caller metrics, own outcomes, or promote a
+  candidate into a learning registry.
+
+---
+
+## r24 — 2026-07-28
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** Phase 6 roadmap recentering, feedback contract validation,
+authenticated intake, immutable storage, domain events, audit reconstruction,
+migration `20260728_0010`, and local/PostgreSQL test coverage
+
+### Implementation
+
+1. Added correlated `review-feedback/v1` validation for the review session and
+   immutable evidence version.
+2. Added one append-only feedback record per completed review session. Exact
+   replay is idempotent; a changed replay is rejected.
+3. Added authenticated `POST /reviews/{review_session_id}/feedback` intake with
+   caller ownership and `feedback:submit` scope checks.
+4. Added the safe `feedback_recorded` domain event and transition from
+   `result_returned` to `feedback_pending`. Opaque decision, action, and outcome
+   reference values remain out of the event stream.
+5. Extended audit reconstruction through feedback linkage and its exact
+   document hash.
+6. Added migration `20260728_0010` for
+   `public.review_feedback_records`, including session uniqueness, lookup
+   indexes, RLS enablement, and revoked client-role privileges.
+
+### Verification
+
+- Focused feedback, API, validation, idempotency, append-only, and audit tests
+  pass locally.
+- Ruff passes.
+- The complete local suite passes with 123 tests and 11 expected opt-in skips.
+- A clean SQLite Alembic upgrade reaches `20260728_0010`.
+- The isolated PostgreSQL concurrency test is implemented with synthetic-row
+  cleanup but has not run against the hosted project yet.
+- The Supabase connector rejected both the read-only state check and migration
+  request before SQL execution because its automatic approval service returned
+  an internal unknown-parameter error. The hosted migration and PostgreSQL
+  verification therefore remain explicitly open.
+
+### Boundary
+
+- Feedback is caller-supplied evaluation evidence, not trusted domain truth.
+- Conclave stores opaque external references but does not own caller decisions,
+  actions, outcomes, causal interpretation, or learning.
+- Reviewer-evaluation candidates and directional panel-value indicators remain
+  the next Phase 6 checkpoint.
 
 ---
 

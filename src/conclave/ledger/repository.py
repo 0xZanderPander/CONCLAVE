@@ -2,6 +2,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import Engine, exists, func, or_, select, update
@@ -12,6 +13,11 @@ from sqlalchemy.orm import Session, aliased, sessionmaker
 
 from conclave.domain.enums import ReviewerSlot, ReviewerType, ReviewStage, ReviewState
 from conclave.domain.models import RequestIdentity
+from conclave.evaluation.models import (
+    DirectionalEvaluationMetrics,
+    ReviewerEvaluationCandidate,
+    RouteEvaluationMetrics,
+)
 from conclave.events.models import (
     DomainEvent,
     DomainEventType,
@@ -26,9 +32,11 @@ from conclave.ledger.models import (
     EventStreamRecord,
     EventSubscriptionRecord,
     RequestSnapshotRecord,
+    ReviewerEvaluationCandidateRecord,
     ReviewerInvocationRecord,
     ReviewerProviderAttemptRecord,
     ReviewerSlotRecord,
+    ReviewFeedbackRecord,
     ReviewOccurrenceRecord,
     ReviewPlanRecord,
     ReviewPlanRevisionRecord,
@@ -118,7 +126,7 @@ def state_transition_summary(target: ReviewState) -> str:
         ReviewState.AUTO_RESOLVED: "The review was auto-resolved.",
         ReviewState.CALLER_DECISION_REQUIRED: "The review requires a caller decision.",
         ReviewState.RESULT_RETURNED: "The structured review result is available.",
-        ReviewState.FEEDBACK_PENDING: "The review is awaiting optional caller feedback.",
+        ReviewState.FEEDBACK_PENDING: "Caller feedback is awaiting evaluation.",
         ReviewState.EVALUATED: "Reviewer performance evaluation completed.",
         ReviewState.INVALID_REQUEST: "The review request was rejected as invalid.",
         ReviewState.STALE_OR_INELIGIBLE_EVIDENCE: (
@@ -1514,6 +1522,383 @@ class LedgerRepository:
             return db.scalar(
                 select(ReviewResultRecord).where(ReviewResultRecord.session_id == session_id)
             )
+
+    def record_feedback(
+        self,
+        *,
+        session_id: str,
+        caller_id: str,
+        document: dict[str, Any],
+    ) -> ReviewFeedbackRecord:
+        feedback_hash = canonical_hash(document)
+        feedback_id = deterministic_id("feedback", session_id)
+        decision = document["decision_summary"]
+        outcome = document["outcome"]
+        evaluated_at = outcome.get("evaluated_at")
+        parsed_evaluated_at = (
+            normalize_instant(
+                datetime.fromisoformat(evaluated_at.replace("Z", "+00:00"))
+            )
+            if isinstance(evaluated_at, str)
+            else None
+        )
+        with self._sessions.begin() as db:
+            session = db.scalar(
+                select(ReviewSessionRecord)
+                .where(ReviewSessionRecord.session_id == session_id)
+                .with_for_update()
+            )
+            if session is None:
+                raise LookupError(f"unknown review session {session_id!r}")
+            if session.caller_id != caller_id:
+                raise LedgerConflictError(
+                    "review feedback caller does not own the review session"
+                )
+            existing = db.scalar(
+                select(ReviewFeedbackRecord).where(
+                    ReviewFeedbackRecord.session_id == session_id
+                )
+            )
+            if existing is not None:
+                if existing.feedback_hash != feedback_hash:
+                    raise LedgerConflictError(
+                        "review feedback is immutable and already differs"
+                    )
+                return existing
+            if session.evidence_version != document["evidence_version"]:
+                raise LedgerConflictError(
+                    "review feedback evidence version does not match the session"
+                )
+            result = db.scalar(
+                select(ReviewResultRecord).where(
+                    ReviewResultRecord.session_id == session_id
+                )
+            )
+            if result is None:
+                raise LedgerConflictError(
+                    "review feedback requires an immutable review result"
+                )
+            source = ReviewState(session.current_state)
+            if source != ReviewState.RESULT_RETURNED:
+                raise LedgerConflictError(
+                    "review feedback can only be added after result return"
+                )
+
+            record = ReviewFeedbackRecord(
+                feedback_id=feedback_id,
+                session_id=session_id,
+                contract_version=document["contract_version"],
+                evidence_version=document["evidence_version"],
+                feedback_hash=feedback_hash,
+                decision_ref=document["decision_ref"],
+                decision_disposition=decision["disposition"],
+                relationship_to_panel=decision["relationship_to_panel"],
+                panel_preference=decision["panel_preference"],
+                action_ref=document.get("action_ref"),
+                outcome_ref=outcome.get("outcome_ref"),
+                outcome_classification=outcome["classification"],
+                action_executed=outcome["action_executed"],
+                confounders=list(outcome.get("confounders", [])),
+                outcome_evidence_quality=outcome.get("evidence_quality"),
+                outcome_evaluated_at=parsed_evaluated_at,
+                document=document,
+            )
+            db.add(record)
+            self._persist_event(
+                db,
+                PendingDomainEvent(
+                    event_type=DomainEventType.FEEDBACK_RECORDED,
+                    stream_type="review_session",
+                    stream_id=session_id,
+                    session_id=session_id,
+                    actor=EventActor(type=EventActorType.CALLER, id=caller_id),
+                    summary="Opaque caller feedback was linked to the review.",
+                    payload={
+                        "feedback_id": feedback_id,
+                        "feedback_hash": feedback_hash,
+                        "contract_version": document["contract_version"],
+                        "evidence_version": document["evidence_version"],
+                        "decision_disposition": decision["disposition"],
+                        "relationship_to_panel": decision[
+                            "relationship_to_panel"
+                        ],
+                        "panel_preference": decision["panel_preference"],
+                        "outcome_classification": outcome["classification"],
+                        "action_executed": outcome["action_executed"],
+                        "confounder_count": len(outcome.get("confounders", [])),
+                        "outcome_evidence_quality": outcome.get(
+                            "evidence_quality"
+                        ),
+                        "has_decision_ref": True,
+                        "has_action_ref": document.get("action_ref") is not None,
+                        "has_outcome_ref": outcome.get("outcome_ref") is not None,
+                    },
+                    correlation_id=session_id,
+                ),
+            )
+            validate_transition(source, ReviewState.FEEDBACK_PENDING)
+            session.current_state = ReviewState.FEEDBACK_PENDING.value
+            self._persist_event(
+                db,
+                PendingDomainEvent(
+                    event_type=DomainEventType.STATE_TRANSITIONED,
+                    stream_type="review_session",
+                    stream_id=session_id,
+                    session_id=session_id,
+                    actor=EventActor(type=EventActorType.CALLER, id=caller_id),
+                    summary=state_transition_summary(ReviewState.FEEDBACK_PENDING),
+                    payload={
+                        "source": source.value,
+                        "target": ReviewState.FEEDBACK_PENDING.value,
+                    },
+                    correlation_id=session_id,
+                ),
+            )
+            try:
+                db.flush()
+            except IntegrityError as exc:
+                raise LedgerConflictError(
+                    "review feedback violates idempotency"
+                ) from exc
+            return record
+
+    def get_feedback(self, session_id: str) -> ReviewFeedbackRecord | None:
+        with self._sessions() as db:
+            return db.scalar(
+                select(ReviewFeedbackRecord).where(
+                    ReviewFeedbackRecord.session_id == session_id
+                )
+            )
+
+    def record_evaluation_candidate(
+        self,
+        *,
+        session_id: str,
+        document: dict[str, Any],
+    ) -> ReviewerEvaluationCandidateRecord:
+        candidate = ReviewerEvaluationCandidate.model_validate(document)
+        normalized = candidate.model_dump(mode="json")
+        candidate_hash = canonical_hash(normalized)
+        candidate_id = deterministic_id("evaluation", session_id)
+        indicators = candidate.indicators
+        with self._sessions.begin() as db:
+            session = db.scalar(
+                select(ReviewSessionRecord)
+                .where(ReviewSessionRecord.session_id == session_id)
+                .with_for_update()
+            )
+            if session is None:
+                raise LookupError(f"unknown review session {session_id!r}")
+            existing = db.scalar(
+                select(ReviewerEvaluationCandidateRecord).where(
+                    ReviewerEvaluationCandidateRecord.session_id == session_id
+                )
+            )
+            if existing is not None:
+                if existing.candidate_hash != candidate_hash:
+                    raise LedgerConflictError(
+                        "reviewer evaluation candidate is immutable"
+                    )
+                return existing
+            result = db.scalar(
+                select(ReviewResultRecord).where(
+                    ReviewResultRecord.session_id == session_id
+                )
+            )
+            feedback = db.scalar(
+                select(ReviewFeedbackRecord).where(
+                    ReviewFeedbackRecord.session_id == session_id
+                )
+            )
+            if result is None or feedback is None:
+                raise LedgerConflictError(
+                    "review evaluation requires immutable result and feedback"
+                )
+            if candidate.review_session_id != session_id:
+                raise LedgerConflictError(
+                    "review evaluation session does not match"
+                )
+            if candidate.evidence_version != session.evidence_version:
+                raise LedgerConflictError(
+                    "review evaluation evidence version does not match"
+                )
+            if candidate.result_hash != result.result_hash:
+                raise LedgerConflictError("review evaluation result hash differs")
+            if candidate.feedback_hash != feedback.feedback_hash:
+                raise LedgerConflictError("review evaluation feedback hash differs")
+            source = ReviewState(session.current_state)
+            if source != ReviewState.FEEDBACK_PENDING:
+                raise LedgerConflictError(
+                    "review evaluation requires feedback-pending state"
+                )
+            record = ReviewerEvaluationCandidateRecord(
+                candidate_id=candidate_id,
+                session_id=session_id,
+                contract_version=candidate.contract_version,
+                candidate_hash=candidate_hash,
+                result_hash=candidate.result_hash,
+                feedback_hash=candidate.feedback_hash,
+                route=candidate.route,
+                panel_changed=indicators.panel_changed,
+                category_changed=indicators.category_changed,
+                caller_preference=indicators.caller_preference,
+                additional_issue_count=indicators.additional_issue_count,
+                cross_review_invoked=indicators.cross_review_invoked,
+                cross_review_resolved=indicators.cross_review_resolved,
+                reviewer_c_invoked=indicators.reviewer_c_invoked,
+                caller_override=indicators.caller_override,
+                total_latency_ms=indicators.total_latency_ms,
+                total_cost_usd=Decimal(str(indicators.total_cost_usd)),
+                outcome_classification=indicators.outcome_classification,
+                outcome_evidence_quality=indicators.outcome_evidence_quality,
+                confounder_count=indicators.confounder_count,
+                document=normalized,
+            )
+            db.add(record)
+            self._persist_event(
+                db,
+                PendingDomainEvent(
+                    event_type=DomainEventType.EVALUATION_CANDIDATE_RECORDED,
+                    stream_type="review_session",
+                    stream_id=session_id,
+                    session_id=session_id,
+                    actor=EventActor(
+                        type=EventActorType.SYSTEM,
+                        id="conclave",
+                    ),
+                    summary=(
+                        "A directional reviewer-evaluation candidate was recorded."
+                    ),
+                    payload={
+                        "candidate_id": candidate_id,
+                        "candidate_hash": candidate_hash,
+                        "contract_version": candidate.contract_version,
+                        "interpretation": candidate.interpretation,
+                        "route": candidate.route,
+                        "panel_changed": indicators.panel_changed,
+                        "category_changed": indicators.category_changed,
+                        "additional_issue_count": (
+                            indicators.additional_issue_count
+                        ),
+                        "cross_review_invoked": (
+                            indicators.cross_review_invoked
+                        ),
+                        "cross_review_resolved": (
+                            indicators.cross_review_resolved
+                        ),
+                        "reviewer_c_invoked": indicators.reviewer_c_invoked,
+                        "caller_override": indicators.caller_override,
+                    },
+                    correlation_id=session_id,
+                ),
+            )
+            validate_transition(source, ReviewState.EVALUATED)
+            session.current_state = ReviewState.EVALUATED.value
+            self._persist_event(
+                db,
+                PendingDomainEvent(
+                    event_type=DomainEventType.STATE_TRANSITIONED,
+                    stream_type="review_session",
+                    stream_id=session_id,
+                    session_id=session_id,
+                    actor=EventActor(
+                        type=EventActorType.SYSTEM,
+                        id="conclave",
+                    ),
+                    summary=state_transition_summary(ReviewState.EVALUATED),
+                    payload={
+                        "source": source.value,
+                        "target": ReviewState.EVALUATED.value,
+                    },
+                    correlation_id=session_id,
+                ),
+            )
+            try:
+                db.flush()
+            except IntegrityError as exc:
+                raise LedgerConflictError(
+                    "review evaluation violates idempotency"
+                ) from exc
+            return record
+
+    def get_evaluation_candidate(
+        self,
+        session_id: str,
+    ) -> ReviewerEvaluationCandidateRecord | None:
+        with self._sessions() as db:
+            return db.scalar(
+                select(ReviewerEvaluationCandidateRecord).where(
+                    ReviewerEvaluationCandidateRecord.session_id == session_id
+                )
+            )
+
+    def directional_evaluation_metrics(self) -> DirectionalEvaluationMetrics:
+        with self._sessions() as db:
+            records = list(
+                db.scalars(
+                    select(ReviewerEvaluationCandidateRecord).order_by(
+                        ReviewerEvaluationCandidateRecord.created_at,
+                        ReviewerEvaluationCandidateRecord.candidate_id,
+                    )
+                )
+            )
+        count = len(records)
+
+        def rate(numerator: int, denominator: int = count) -> float | None:
+            return numerator / denominator if denominator else None
+
+        routes: dict[str, RouteEvaluationMetrics] = {}
+        for route in sorted({record.route for record in records}):
+            selected = [record for record in records if record.route == route]
+            route_count = len(selected)
+            total_latency = sum(record.total_latency_ms for record in selected)
+            total_cost = sum(
+                (Decimal(record.total_cost_usd) for record in selected),
+                Decimal("0"),
+            )
+            routes[route] = RouteEvaluationMetrics(
+                candidate_count=route_count,
+                average_latency_ms=total_latency / route_count,
+                total_cost_usd=float(total_cost),
+                average_cost_usd=float(total_cost / route_count),
+            )
+        cross_review_count = sum(
+            int(record.cross_review_invoked) for record in records
+        )
+        comparable_preference_count = sum(
+            int(record.caller_preference != "not_comparable")
+            for record in records
+        )
+        return DirectionalEvaluationMetrics(
+            interpretation="directional_only",
+            candidate_count=count,
+            panel_change_rate=rate(
+                sum(int(record.panel_changed) for record in records)
+            ),
+            caller_preferred_panel_rate=rate(
+                sum(
+                    int(record.caller_preference == "preferred_panel")
+                    for record in records
+                ),
+                comparable_preference_count,
+            ),
+            average_additional_issue_count=(
+                sum(record.additional_issue_count for record in records) / count
+                if count
+                else None
+            ),
+            cross_review_resolution_rate=rate(
+                sum(int(record.cross_review_resolved) for record in records),
+                cross_review_count,
+            ),
+            reviewer_c_invocation_rate=rate(
+                sum(int(record.reviewer_c_invoked) for record in records)
+            ),
+            caller_override_rate=rate(
+                sum(int(record.caller_override) for record in records)
+            ),
+            routes=routes,
+        )
 
     def register_process(
         self,

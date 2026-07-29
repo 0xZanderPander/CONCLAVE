@@ -421,7 +421,7 @@ repeated unnecessarily.
 - recommendation and experiment schemas
 - conservative auto-resolve
 - caller-decision-required results
-- optional external feedback linkage
+- authenticated, immutable external feedback linkage
 - reviewer-performance candidates
 - token, latency, cost, prompt, and schema accounting
 - append-only audit history
@@ -508,8 +508,11 @@ Completed foundation:
 
 Next:
 
-1. build Phase 6 durable feedback linkage and panel-value evaluation
-2. use outcome-linked evidence, rather than one-off acceptance outputs, before
+1. verify Phase 6 migrations `0010` and `0011`, concurrent feedback/evaluation,
+   cleanup, and advisors on PostgreSQL
+2. run the 30-case Phase 7 fixture pilot using the implemented directional
+   evaluation metrics
+3. use outcome-linked evidence, rather than one-off acceptance outputs, before
    assigning permanent reviewer positions
 
 Non-local API mode requires explicit bearer authentication and caller scopes.

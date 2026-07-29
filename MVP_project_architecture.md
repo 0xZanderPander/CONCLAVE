@@ -319,7 +319,8 @@ reason, and returns the session to the existing bounded cross-review state.
 - require scoped bearer credentials and caller ownership in non-local mode
 - expose review status and complete review records
 - expose structured results through polling
-- accept opaque caller feedback in planned Phase 6 work
+- accept one authenticated, immutable opaque caller-feedback record per
+  completed review
 - expose health and readiness
 
 ### Scheduler/Worker
@@ -606,8 +607,22 @@ immutable task-pack revision used for eligibility, materiality, comparison, and
 result validation. Separate query-oriented tables should be added only when a
 proven access pattern requires them.
 
-Deferred persistence includes external feedback references, reviewer
-evaluation candidates, and result-delivery attempts.
+Migration `20260728_0010` adds one immutable `review_feedback_records` row per
+review session. The row stores the exact validated feedback document, its
+canonical hash, opaque caller references, outcome classification, confounders,
+and outcome evidence quality. Identical replay is idempotent; changed replay is
+rejected. RLS is enabled and all Data API roles are revoked because Conclave
+accesses the ledger only through its authenticated server process.
+
+Migration `20260728_0011` adds one immutable
+`reviewer_evaluation_candidates` row per session. It links the exact result and
+feedback hashes; stores complete baseline/final assessment fingerprints; and
+persists directional panel-change, caller-preference, issue-catch,
+cross-review, reviewer-C, override, latency, cost, outcome-quality, and
+confounder indicators. Exact monetary totals use fixed-precision numeric
+storage. RLS is enabled and all Data API roles are revoked.
+
+Deferred persistence includes result-delivery attempts.
 
 Important constraints:
 
@@ -633,6 +648,13 @@ Implemented local fixture endpoints:
 - `POST /reviews/{review_session_id}/run` — run an explicit regression fixture
   path
 - `GET /reviews/{review_session_id}/result` — retrieve the structured result
+- `POST /reviews/{review_session_id}/feedback` — submit one authenticated,
+  immutable `review-feedback/v1` record and derive its evaluation candidate
+- `GET /reviews/{review_session_id}/feedback` — retrieve owned feedback
+- `GET /reviews/{review_session_id}/evaluation` — retrieve the owned
+  directional evaluation candidate
+- `GET /evaluations/metrics` — retrieve operator-scoped aggregate directional
+  indicators and latency/cost by route
 - `GET /reviews/{review_session_id}/audit` — verify the decision ledger
 - `GET /review-sessions/{review_session_id}/events` — read typed events after a
   stream-sequence cursor
@@ -647,9 +669,10 @@ Implemented local fixture endpoints:
 
 Local fixture mode is development-only and does not require a credential.
 Every non-local mode fails startup unless scoped static bearer credentials are
-configured. Reads are restricted to the owning caller; operational endpoints
-require the `operations:manage` scope. Plan-management endpoints, external
-feedback, and result-delivery endpoints are later-phase work.
+configured. Reads are restricted to the owning caller; feedback and evaluation
+reads require their dedicated scopes, and operational endpoints require the
+`operations:manage` scope. Plan-management and result-delivery endpoints are
+later-phase work.
 
 ## Security and Reliability
 

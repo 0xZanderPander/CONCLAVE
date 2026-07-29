@@ -2,9 +2,11 @@
 
 ## Status
 
-Active implementation roadmap for the independent Conclave MVP. Phases 1A,
-1B, the transport-neutral event boundary, and Phase 2 sample task-pack routing
-are complete.
+Active implementation roadmap for the independent Conclave MVP. Phases 0
+through 5 are complete for the polling-based MVP, and the three-provider
+compatibility gate is complete. Phase 6 feedback intake, immutable
+reviewer-evaluation candidates, and directional metrics are implemented and
+verified locally and on the hosted PostgreSQL project.
 
 The normal worker now routes from request and recommendation materiality,
 scheduled and failed-goal triggers, weighted disagreement, merge compatibility,
@@ -370,17 +372,17 @@ recorded in [the Phase 4B contract](PHASE_4B_CONTRACT_PROPOSAL.md).
 
 ## Phase 5: Structured Result Return
 
-**Status:** partially complete. `review-result/v1`, immutable result storage,
+**Status:** complete for the polling-based MVP. `review-result/v1`, immutable result storage,
 snapshot linkage, automatic result construction, local API retrieval, and
 idempotent result persistence exist. Transport callback delivery and its retry
-policy remain deferred; polling is the current MVP return path.
+policy are explicitly deferred; polling is the MVP return path.
 
 ### Build
 
 - [x] `review-result/v1`
 - [x] local result retrieval through polling, with a future callback left behind
   the draft boundary
-- [ ] callback delivery retry and deduplication
+- Deferred: callback delivery retry and deduplication
 - [x] evidence version and snapshot hash linkage
 - [x] result categories for observation, more data, experiment, operational change,
   freeze, and tracking/data problems
@@ -394,8 +396,8 @@ policy remain deferred; polling is the current MVP return path.
 - [x] Immutable result persistence cannot create duplicate recommendations.
 - [x] The result contains no instruction that bypasses caller policy.
 - [x] Conclave sends no Telegram approval and performs no platform write.
-- [ ] Optional callback delivery, if added, retries without duplicating a
-  result.
+- Deferred: optional callback delivery must retry without duplicating a result
+  if it is added after the MVP.
 
 ## Provider Diversity Gate Before Phase 6
 
@@ -517,22 +519,32 @@ assigned; Phase 6 outcome-linked evaluation is the next decision-quality gate.
 
 ## Phase 6: External Feedback and Reviewer Evaluation
 
-**Status:** contract fixture only. The feedback schema validates, but feedback
-ingestion, durable linkage, and reviewer-evaluation calculations are not yet
-implemented.
+**Status:** complete and hosted verified. Authenticated feedback intake produces
+one immutable, versioned reviewer-evaluation candidate, compares the complete
+published Reviewer-A baseline with the complete selected result, and exposes
+explicitly directional metrics. Hosted migrations `20260728_0010` and
+`20260728_0011`, concurrent feedback/evaluation replay, complete table shape,
+RLS, policy, privilege, audit reconstruction, and zero-row cleanup checks pass.
+Hosted security and performance advisors report no warning or error findings.
 
 ### Build
 
 - [x] validated `review-feedback/v1` schema and fixture
-- [ ] feedback API and durable session linkage
-- [ ] simulated decision, action, and outcome references in the ledger
-- [ ] beneficial, harmful, no-effect, mixed, and inconclusive reviewer-result
+- [x] authenticated feedback API and durable session linkage
+- [x] one immutable, idempotent feedback record per review session
+- [x] safe `feedback_recorded` event without copied opaque references
+- [x] simulated decision, action, and outcome references in the ledger
+- [x] beneficial, harmful, no-effect, mixed, and inconclusive reviewer-result
   classifications
-- [ ] confounder and evidence-quality persistence
-- [ ] reviewer-evaluation candidates
-- [ ] single-reviewer versus panel comparison
-- [ ] panel-delta, caller-preference, issue-catch, cross-review-resolution,
+- [x] confounder and evidence-quality persistence
+- [x] hosted migrations `20260728_0010` and `20260728_0011` plus PostgreSQL
+  concurrency verification
+- [x] immutable, versioned reviewer-evaluation candidates
+- [x] complete published single-reviewer versus selected-result comparison
+- [x] panel-change, caller-preference, issue-catch, cross-review-resolution,
   reviewer-C, override, latency, and cost indicators
+- [x] authenticated feedback/evaluation retrieval and aggregate directional
+  metrics by route
 
 ### Exit Gate
 
@@ -608,8 +620,8 @@ implemented.
 - [x] Material results return `caller_decision_required`.
 - [x] Conclave has no platform credential or execution path.
 - [x] Conclave has no authoritative Marketing approval surface.
-- [ ] Feedback is linked without becoming trusted domain truth.
-- [ ] Panel-value metrics are labeled directional rather than causal proof.
+- [x] Feedback is linked without becoming trusted domain truth.
+- [x] Panel-value metrics are labeled directional rather than causal proof.
 - [x] Provider, prompt, schema, token, latency, and cost data are auditable.
 - [x] Queue failures retry without duplicating completed work.
 - [x] Completed fixture results and their decision ledgers validate on
@@ -652,10 +664,4 @@ Its scope is limited to optional ad-performance review:
 
 ## Immediate Next Build
 
-1. Build and mock-test the Gemini adapter.
-2. Run one free-tier Gemini independent-review acceptance call.
-3. Compare all three providers before assigning permanent reviewer positions.
-4. Implement Phase 6 feedback persistence, API linkage, classification,
-   confounders, evidence quality, baseline-versus-panel comparison, and
-   reviewer/panel indicators.
-5. Run the Phase 7 pilot with at least 30 synthetic or replayed cases.
+1. Run the Phase 7 pilot with at least 30 synthetic or replayed cases.

@@ -77,6 +77,34 @@ def validate_review_result(
     _validate_request_result_pair(request, document, "review result")
 
 
+def validate_review_feedback(
+    document: dict[str, Any],
+    *,
+    session_id: str,
+    evidence_version: str,
+    root: Path | None = None,
+) -> None:
+    root = root or contracts_root()
+    schema = _load(root / "schemas" / "review-feedback.v1.schema.json")
+    Draft7Validator.check_schema(schema)
+    validator = Draft7Validator(schema, format_checker=FormatChecker())
+    errors = sorted(validator.iter_errors(document), key=lambda item: list(item.path))
+    if errors:
+        messages = []
+        for error in errors:
+            location = ".".join(str(part) for part in error.path) or "$"
+            messages.append(f"{location}: {error.message}")
+        raise ContractValidationError("\n".join(messages))
+    if document["review_session_id"] != session_id:
+        raise ContractValidationError(
+            "review feedback: review_session_id does not match the requested session"
+        )
+    if document["evidence_version"] != evidence_version:
+        raise ContractValidationError(
+            "review feedback: evidence_version does not match the review session"
+        )
+
+
 def _leaf_paths(value: Any, path: str) -> list[str]:
     if isinstance(value, dict):
         return [

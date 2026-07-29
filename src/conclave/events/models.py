@@ -28,6 +28,8 @@ class DomainEventType(StrEnum):
     COMPARISON_COMPLETED = "comparison_completed"
     STATE_TRANSITIONED = "state_transitioned"
     RESULT_RECORDED = "result_recorded"
+    FEEDBACK_RECORDED = "feedback_recorded"
+    EVALUATION_CANDIDATE_RECORDED = "evaluation_candidate_recorded"
     PROCESS_STARTED = "process_started"
     PROCESS_STOPPED = "process_stopped"
 

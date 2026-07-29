@@ -13,6 +13,8 @@ ALL_CALLER_SCOPES = frozenset(
         "reviews:read",
         "events:read",
         "feedback:submit",
+        "feedback:read",
+        "evaluations:read",
         "operations:manage",
     }
 )

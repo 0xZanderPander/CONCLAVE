@@ -6,7 +6,7 @@ from httpx import ASGITransport, AsyncClient
 
 from conclave.api.app import create_app
 from conclave.config import Settings
-from conclave.fixtures import load_request_fixture
+from conclave.fixtures import build_feedback_for_session, load_request_fixture
 from tests.helpers import create_test_engine
 
 
@@ -80,6 +80,52 @@ async def test_local_api_accepts_and_runs_a_fixture_review() -> None:
             assert provider_attempts["average_latency_ms"] >= 0
             assert provider_attempts["last_completed_at"] is not None
             assert operations.json()["stale_process_ids"] == []
+
+            feedback_document = build_feedback_for_session(
+                session_id=payload["review_session_id"],
+                evidence_version=document["evidence_version"],
+            )
+            feedback = await client.post(
+                f"/reviews/{payload['review_session_id']}/feedback",
+                json=feedback_document,
+            )
+            repeated_feedback = await client.post(
+                f"/reviews/{payload['review_session_id']}/feedback",
+                json=feedback_document,
+            )
+            feedback_audit = await client.get(
+                f"/reviews/{payload['review_session_id']}/audit"
+            )
+            stored_feedback = await client.get(
+                f"/reviews/{payload['review_session_id']}/feedback"
+            )
+            evaluation = await client.get(
+                f"/reviews/{payload['review_session_id']}/evaluation"
+            )
+            evaluation_metrics = await client.get("/evaluations/metrics")
+            assert feedback.status_code == 201
+            assert feedback.json()["state"] == "evaluated"
+            assert repeated_feedback.status_code == 201
+            assert repeated_feedback.json() == feedback.json()
+            assert stored_feedback.status_code == 200
+            assert stored_feedback.json() == feedback_document
+            assert evaluation.status_code == 200
+            assert evaluation.json()["interpretation"] == "directional_only"
+            assert evaluation_metrics.status_code == 200
+            assert evaluation_metrics.json()["candidate_count"] == 1
+            assert (
+                evaluation_metrics.json()["interpretation"]
+                == "directional_only"
+            )
+            assert feedback_audit.status_code == 200
+            assert (
+                feedback_audit.json()["feedback_hash"]
+                == feedback.json()["feedback_hash"]
+            )
+            assert (
+                feedback_audit.json()["evaluation_hash"]
+                == feedback.json()["evaluation_candidate_hash"]
+            )
     finally:
         engine.dispose()
 
@@ -223,7 +269,14 @@ async def test_static_bearer_authenticates_scopes_and_caller_ownership() -> None
         {
             "fixture-caller": {
                 "token": "fixture-secret",
-                "scopes": ["reviews:submit", "reviews:read", "events:read"],
+                "scopes": [
+                    "reviews:submit",
+                    "reviews:read",
+                    "events:read",
+                    "feedback:submit",
+                    "feedback:read",
+                    "evaluations:read",
+                ],
             },
             "other-caller": {
                 "token": "other-secret",
@@ -270,6 +323,45 @@ async def test_static_bearer_authenticates_scopes_and_caller_ownership() -> None
                 headers={"Authorization": "Bearer fixture-secret"},
             )
             assert allowed.status_code == 200
+
+            completed = await client.post(
+                f"/reviews/{session_id}/run",
+                json={"path": "a_only"},
+                headers={"Authorization": "Bearer fixture-secret"},
+            )
+            assert completed.status_code == 200
+            feedback_document = build_feedback_for_session(
+                session_id=session_id,
+                evidence_version=document["evidence_version"],
+            )
+            wrong_feedback_scope = await client.post(
+                f"/reviews/{session_id}/feedback",
+                json=feedback_document,
+                headers={"Authorization": "Bearer other-secret"},
+            )
+            assert wrong_feedback_scope.status_code == 403
+            feedback = await client.post(
+                f"/reviews/{session_id}/feedback",
+                json=feedback_document,
+                headers={"Authorization": "Bearer fixture-secret"},
+            )
+            assert feedback.status_code == 201
+            assert feedback.json()["state"] == "evaluated"
+            evaluation = await client.get(
+                f"/reviews/{session_id}/evaluation",
+                headers={"Authorization": "Bearer fixture-secret"},
+            )
+            assert evaluation.status_code == 200
+            wrong_evaluation_scope = await client.get(
+                f"/reviews/{session_id}/evaluation",
+                headers={"Authorization": "Bearer other-secret"},
+            )
+            assert wrong_evaluation_scope.status_code == 403
+            aggregate_metrics = await client.get(
+                "/evaluations/metrics",
+                headers={"Authorization": "Bearer fixture-secret"},
+            )
+            assert aggregate_metrics.status_code == 403
 
             wrong_scope = await client.post(
                 "/scheduler/tick",

@@ -1,13 +1,17 @@
 import hashlib
 from dataclasses import dataclass
 
-from conclave.contracts.validation import validate_review_result
+from conclave.contracts.validation import (
+    validate_review_feedback,
+    validate_review_result,
+)
 from conclave.domain.enums import (
     ReviewerSlot,
     ReviewStage,
     ReviewState,
     TriggerKind,
 )
+from conclave.evaluation.models import ReviewerEvaluationCandidate
 from conclave.ledger.repository import LedgerRepository, canonical_hash
 from conclave.orchestration.state_machine import (
     InvalidTransitionError,
@@ -31,6 +35,8 @@ class AuditVerification:
     event_count: int
     invocation_count: int
     result_hash: str
+    feedback_hash: str | None
+    evaluation_hash: str | None
 
 
 _EXPECTED_INVOCATIONS = {
@@ -112,6 +118,8 @@ class AuditVerifier:
         reconstructed = ReviewState(events[0].event_payload["state"])
         state_trace = [reconstructed]
         result_recorded = False
+        feedback_event_hashes: list[str] = []
+        evaluation_event_hashes: list[str] = []
         for event in events[1:]:
             if event.event_type == "result_recorded":
                 if result_recorded:
@@ -119,6 +127,20 @@ class AuditVerifier:
                 if event.event_payload["result_hash"] != result.result_hash:
                     raise AuditVerificationError("result hash differs from audit event")
                 result_recorded = True
+            if event.event_type == "feedback_recorded":
+                feedback_hash = event.event_payload.get("feedback_hash")
+                if not isinstance(feedback_hash, str):
+                    raise AuditVerificationError(
+                        "feedback event does not contain a feedback hash"
+                    )
+                feedback_event_hashes.append(feedback_hash)
+            if event.event_type == "evaluation_candidate_recorded":
+                candidate_hash = event.event_payload.get("candidate_hash")
+                if not isinstance(candidate_hash, str):
+                    raise AuditVerificationError(
+                        "evaluation event does not contain a candidate hash"
+                    )
+                evaluation_event_hashes.append(candidate_hash)
             if event.event_type != "state_transitioned":
                 continue
             source = ReviewState(event.event_payload["source"])
@@ -143,11 +165,72 @@ class AuditVerifier:
             raise AuditVerificationError(
                 "reconstructed state does not match the persisted session state"
             )
-        if reconstructed != ReviewState.RESULT_RETURNED:
-            raise AuditVerificationError(f"review session is not complete: {reconstructed.value!r}")
         if canonical_hash(result.document) != result.result_hash:
             raise AuditVerificationError("persisted result hash is invalid")
         validate_review_result(result.document, snapshot.content)
+        feedback = self._repository.get_feedback(session_id)
+        evaluation = self._repository.get_evaluation_candidate(session_id)
+        if feedback is None:
+            if reconstructed != ReviewState.RESULT_RETURNED:
+                raise AuditVerificationError(
+                    f"review session is not complete: {reconstructed.value!r}"
+                )
+            if feedback_event_hashes:
+                raise AuditVerificationError(
+                    "feedback event exists without immutable feedback"
+                )
+            if evaluation is not None or evaluation_event_hashes:
+                raise AuditVerificationError(
+                    "evaluation exists without immutable feedback"
+                )
+        else:
+            expected_feedback_state = (
+                ReviewState.EVALUATED
+                if evaluation is not None
+                else ReviewState.FEEDBACK_PENDING
+            )
+            if reconstructed != expected_feedback_state:
+                raise AuditVerificationError(
+                    "feedback state does not match evaluation persistence"
+                )
+            if canonical_hash(feedback.document) != feedback.feedback_hash:
+                raise AuditVerificationError("persisted feedback hash is invalid")
+            validate_review_feedback(
+                feedback.document,
+                session_id=session_id,
+                evidence_version=session.evidence_version,
+            )
+            if feedback_event_hashes != [feedback.feedback_hash]:
+                raise AuditVerificationError(
+                    "feedback event does not match immutable feedback"
+                )
+            if evaluation is None:
+                if evaluation_event_hashes:
+                    raise AuditVerificationError(
+                        "evaluation event exists without immutable candidate"
+                    )
+            else:
+                if canonical_hash(evaluation.document) != evaluation.candidate_hash:
+                    raise AuditVerificationError(
+                        "persisted evaluation candidate hash is invalid"
+                    )
+                candidate = ReviewerEvaluationCandidate.model_validate(
+                    evaluation.document
+                )
+                if (
+                    candidate.review_session_id != session_id
+                    or candidate.result_hash != result.result_hash
+                    or candidate.feedback_hash != feedback.feedback_hash
+                    or candidate.evidence_version != session.evidence_version
+                    or candidate.interpretation != "directional_only"
+                ):
+                    raise AuditVerificationError(
+                        "evaluation candidate source linkage is invalid"
+                    )
+                if evaluation_event_hashes != [evaluation.candidate_hash]:
+                    raise AuditVerificationError(
+                        "evaluation event does not match immutable candidate"
+                    )
 
         invocations = self._repository.list_invocations(session_id)
         expected_invocations = _EXPECTED_INVOCATIONS.get(result.path)
@@ -162,6 +245,16 @@ class AuditVerifier:
             *_EXPECTED_STATE_PREFIXES[result.path],
             resolution_state,
             ReviewState.RESULT_RETURNED,
+            *(
+                (ReviewState.FEEDBACK_PENDING,)
+                if feedback is not None
+                else ()
+            ),
+            *(
+                (ReviewState.EVALUATED,)
+                if evaluation is not None
+                else ()
+            ),
         )
         decision_state_trace: list[ReviewState] = []
         index = 0
@@ -204,6 +297,10 @@ class AuditVerifier:
             event_count=len(events),
             invocation_count=len(invocations),
             result_hash=result.result_hash,
+            feedback_hash=feedback.feedback_hash if feedback is not None else None,
+            evaluation_hash=(
+                evaluation.candidate_hash if evaluation is not None else None
+            ),
         )
 
     def _verify_decision_route(

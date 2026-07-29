@@ -32,6 +32,24 @@ def load_request_fixture(name: str = "01-normal-healthy.json") -> dict[str, Any]
         return json.load(source)
 
 
+def load_feedback_fixture(name: str = "01-beneficial.json") -> dict[str, Any]:
+    path = contracts_root() / "fixtures" / "feedback" / Path(name).name
+    with path.open(encoding="utf-8") as source:
+        return json.load(source)
+
+
+def build_feedback_for_session(
+    *,
+    session_id: str,
+    evidence_version: str,
+    template: str = "01-beneficial.json",
+) -> dict[str, Any]:
+    document = deepcopy(load_feedback_fixture(template))
+    document["review_session_id"] = session_id
+    document["evidence_version"] = evidence_version
+    return document
+
+
 def build_request_for_occurrence(
     occurrence: ReviewOccurrenceRecord,
     *,

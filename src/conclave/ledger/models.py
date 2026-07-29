@@ -1,15 +1,18 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
+    Numeric,
     String,
     UniqueConstraint,
     event,
@@ -330,6 +333,105 @@ class ReviewResultRecord(Base):
     )
 
 
+class ReviewFeedbackRecord(Base):
+    __tablename__ = "review_feedback_records"
+    __table_args__ = (
+        UniqueConstraint("session_id", name="uq_review_feedback_session"),
+    )
+
+    feedback_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("review_sessions.session_id"), nullable=False, index=True
+    )
+    contract_version: Mapped[str] = mapped_column(String(60), nullable=False)
+    evidence_version: Mapped[str] = mapped_column(String(200), nullable=False)
+    feedback_hash: Mapped[str] = mapped_column(String(71), nullable=False, index=True)
+    decision_ref: Mapped[str] = mapped_column(String(200), nullable=False)
+    decision_disposition: Mapped[str] = mapped_column(String(40), nullable=False)
+    relationship_to_panel: Mapped[str] = mapped_column(String(40), nullable=False)
+    panel_preference: Mapped[str] = mapped_column(String(40), nullable=False)
+    action_ref: Mapped[str | None] = mapped_column(String(200))
+    outcome_ref: Mapped[str | None] = mapped_column(String(200))
+    outcome_classification: Mapped[str] = mapped_column(String(40), nullable=False)
+    action_executed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    confounders: Mapped[list[str]] = mapped_column(
+        POSTGRES_JSON, nullable=False, default=list
+    )
+    outcome_evidence_quality: Mapped[str | None] = mapped_column(String(40))
+    outcome_evaluated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    document: Mapped[dict[str, Any]] = mapped_column(POSTGRES_JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class ReviewerEvaluationCandidateRecord(Base):
+    __tablename__ = "reviewer_evaluation_candidates"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id",
+            name="uq_reviewer_evaluation_candidate_session",
+        ),
+        CheckConstraint(
+            "additional_issue_count >= 0",
+            name="ck_reviewer_evaluation_additional_issue_count",
+        ),
+        CheckConstraint(
+            "total_latency_ms >= 0",
+            name="ck_reviewer_evaluation_total_latency",
+        ),
+        CheckConstraint(
+            "total_cost_usd >= 0",
+            name="ck_reviewer_evaluation_total_cost",
+        ),
+        CheckConstraint(
+            "confounder_count >= 0",
+            name="ck_reviewer_evaluation_confounder_count",
+        ),
+        CheckConstraint(
+            "route in ('a_only', 'ab_agreement', "
+            "'cross_review_resolved', 'c_tie_broken')",
+            name="ck_reviewer_evaluation_route",
+        ),
+        Index(
+            "ix_reviewer_evaluation_candidates_route_created",
+            "route",
+            "created_at",
+        ),
+    )
+
+    candidate_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("review_sessions.session_id"), nullable=False
+    )
+    contract_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    candidate_hash: Mapped[str] = mapped_column(String(71), nullable=False, index=True)
+    result_hash: Mapped[str] = mapped_column(String(71), nullable=False)
+    feedback_hash: Mapped[str] = mapped_column(String(71), nullable=False)
+    route: Mapped[str] = mapped_column(String(40), nullable=False)
+    panel_changed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    category_changed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    caller_preference: Mapped[str] = mapped_column(String(40), nullable=False)
+    additional_issue_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    cross_review_invoked: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    cross_review_resolved: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    reviewer_c_invoked: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    caller_override: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    total_latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_cost_usd: Mapped[Decimal] = mapped_column(
+        Numeric(18, 8), nullable=False
+    )
+    outcome_classification: Mapped[str] = mapped_column(String(40), nullable=False)
+    outcome_evidence_quality: Mapped[str | None] = mapped_column(String(40))
+    confounder_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    document: Mapped[dict[str, Any]] = mapped_column(POSTGRES_JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
 class RuntimeProcessRecord(Base):
     __tablename__ = "runtime_processes"
     __table_args__ = (
@@ -466,6 +568,8 @@ for immutable_type in (
     ReviewOccurrenceRecord,
     RequestSnapshotRecord,
     TaskPackRevisionRecord,
+    ReviewFeedbackRecord,
+    ReviewerEvaluationCandidateRecord,
     ReviewResultRecord,
     ReviewerProviderAttemptRecord,
     AuditEventRecord,

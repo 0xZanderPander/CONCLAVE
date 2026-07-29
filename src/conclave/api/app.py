@@ -16,6 +16,8 @@ from conclave.auditing.verification import AuditVerificationError, AuditVerifier
 from conclave.config import Settings
 from conclave.contracts.validation import ContractValidationError
 from conclave.database import create_database_engine, create_session_factory
+from conclave.evaluation.service import ReviewerEvaluationService
+from conclave.feedback import FeedbackIntakeService
 from conclave.fixtures import load_design_plan_revisions
 from conclave.intake import ReviewIntakeService
 from conclave.ledger.repository import (
@@ -82,6 +84,8 @@ def create_app(
             repository.add_plan_revision(revision)
 
     intake = ReviewIntakeService(repository)
+    feedback_intake = FeedbackIntakeService(repository)
+    evaluation = ReviewerEvaluationService(repository)
     scheduler = SchedulerService(
         repository,
         max_attempts=settings.worker_max_attempts,
@@ -102,6 +106,9 @@ def create_app(
     submit_dependency = scope_dependency(authenticator, "reviews:submit")
     read_dependency = scope_dependency(authenticator, "reviews:read")
     events_dependency = scope_dependency(authenticator, "events:read")
+    feedback_dependency = scope_dependency(authenticator, "feedback:submit")
+    feedback_read_dependency = scope_dependency(authenticator, "feedback:read")
+    evaluation_read_dependency = scope_dependency(authenticator, "evaluations:read")
     operations_dependency = scope_dependency(authenticator, "operations:manage")
 
     app = FastAPI(
@@ -112,6 +119,8 @@ def create_app(
     app.state.engine = engine
     app.state.repository = repository
     app.state.intake = intake
+    app.state.feedback_intake = feedback_intake
+    app.state.evaluation = evaluation
     app.state.scheduler = scheduler
     app.state.orchestrator = orchestrator
     app.state.worker = worker
@@ -231,6 +240,97 @@ def create_app(
             raise HTTPException(status_code=404, detail="review result not found")
         return result.document
 
+    @app.post("/reviews/{session_id}/feedback", status_code=201)
+    def submit_review_feedback(
+        session_id: str,
+        document: dict[str, Any],
+        principal: Annotated[CallerPrincipal, Depends(feedback_dependency)],
+    ) -> dict[str, Any]:
+        authorize_session(principal, session_id)
+        session = repository.get_session(session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="review session not found")
+        try:
+            accepted = feedback_intake.accept(
+                session_id=session_id,
+                caller_id=principal.caller_id or session.caller_id,
+                document=document,
+            )
+            evaluated = evaluation.evaluate(session_id)
+        except ContractValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except LedgerConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "feedback_id": accepted.feedback_id,
+            "feedback_hash": accepted.feedback_hash,
+            "review_session_id": accepted.session_id,
+            "state": evaluated.state.value,
+            "evaluation_candidate_id": evaluated.candidate_id,
+            "evaluation_candidate_hash": evaluated.candidate_hash,
+        }
+
+    @app.get("/reviews/{session_id}/feedback")
+    def get_review_feedback(
+        session_id: str,
+        principal: Annotated[CallerPrincipal, Depends(feedback_read_dependency)],
+    ) -> dict[str, Any]:
+        authorize_session(principal, session_id)
+        feedback = repository.get_feedback(session_id)
+        if feedback is None:
+            raise HTTPException(status_code=404, detail="review feedback not found")
+        return feedback.document
+
+    @app.get("/reviews/{session_id}/evaluation")
+    def get_review_evaluation(
+        session_id: str,
+        principal: Annotated[CallerPrincipal, Depends(evaluation_read_dependency)],
+    ) -> dict[str, Any]:
+        authorize_session(principal, session_id)
+        candidate = repository.get_evaluation_candidate(session_id)
+        if candidate is None:
+            raise HTTPException(
+                status_code=404,
+                detail="review evaluation candidate not found",
+            )
+        return candidate.document
+
+    @app.get("/evaluations/metrics")
+    def get_evaluation_metrics(
+        _principal: Annotated[
+            CallerPrincipal,
+            Depends(operations_dependency),
+        ],
+    ) -> dict[str, Any]:
+        metrics = evaluation.metrics()
+        return {
+            "interpretation": metrics.interpretation,
+            "candidate_count": metrics.candidate_count,
+            "panel_change_rate": metrics.panel_change_rate,
+            "caller_preferred_panel_rate": (
+                metrics.caller_preferred_panel_rate
+            ),
+            "average_additional_issue_count": (
+                metrics.average_additional_issue_count
+            ),
+            "cross_review_resolution_rate": (
+                metrics.cross_review_resolution_rate
+            ),
+            "reviewer_c_invocation_rate": metrics.reviewer_c_invocation_rate,
+            "caller_override_rate": metrics.caller_override_rate,
+            "routes": {
+                route: {
+                    "candidate_count": values.candidate_count,
+                    "average_latency_ms": values.average_latency_ms,
+                    "total_cost_usd": values.total_cost_usd,
+                    "average_cost_usd": values.average_cost_usd,
+                }
+                for route, values in metrics.routes.items()
+            },
+        }
+
     @app.get("/reviews/{session_id}/audit")
     def verify_review_audit(
         session_id: str,
@@ -248,6 +348,8 @@ def create_app(
             "event_count": verification.event_count,
             "invocation_count": verification.invocation_count,
             "result_hash": verification.result_hash,
+            "feedback_hash": verification.feedback_hash,
+            "evaluation_hash": verification.evaluation_hash,
         }
 
     @app.get("/review-sessions/{session_id}/events")
