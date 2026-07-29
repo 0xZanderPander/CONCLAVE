@@ -3,10 +3,11 @@
 ## Status
 
 Active implementation roadmap for the independent Conclave MVP. Phases 0
-through 5 are complete for the polling-based MVP, and the three-provider
-compatibility gate is complete. Phase 6 feedback intake, immutable
-reviewer-evaluation candidates, and directional metrics are implemented and
-verified locally and on the hosted PostgreSQL project.
+through 7 are complete for the deterministic polling-based MVP, and the
+three-provider compatibility gate is complete. Phase 6 feedback intake,
+immutable reviewer-evaluation candidates, and directional metrics are verified
+locally and on the hosted PostgreSQL project. The 34-case Phase 7 pilot passes
+locally with complete result and terminal-state audit reconstruction.
 
 The normal worker now routes from request and recommendation materiality,
 scheduled and failed-goal triggers, weighted disagreement, merge compatibility,
@@ -558,40 +559,49 @@ Hosted security and performance advisors report no warning or error findings.
 
 ## Phase 7: Fixture Pilot and Hardening
 
+**Status:** complete for the deterministic local pilot. All 34 expected
+outcomes pass: 31 runs complete through feedback and evaluation, while stale
+evidence and two malformed-output cases stop in their explicit terminal states.
+The pilot verifies retries, one controlled cross-review recovery, idempotency,
+same-snapshot reviewer isolation, evidence traceability, result clarity, route
+metrics, and all 34 audit traces. See
+[`PHASE_7_PILOT_REVIEW.md`](pilot-results/phase7/PHASE_7_PILOT_REVIEW.md).
+
 ### Coverage
 
-- at least 30 synthetic or replayed fixture runs
-- at least five material result paths
-- stale, partial, and tracking-unhealthy requests
-- malformed reviewer output
-- provider timeout
-- disagreement, cross-review, and reviewer-C cases
-- auto-resolved agreement
-- experiment and `collect_more_data` results
-- one complete external feedback record
+- [x] at least 30 synthetic or replayed fixture runs
+- [x] at least five material result paths
+- [x] stale, partial, and tracking-unhealthy requests
+- [x] malformed reviewer output
+- [x] provider timeout
+- [x] disagreement, cross-review, and reviewer-C cases
+- [x] auto-resolved agreement
+- [x] experiment and `collect_more_data` results
+- [x] complete external feedback records across all 31 completed cases
 
 ### Evaluate
 
-- schedule and idempotency reliability
-- reviewer independence
-- result clarity and usefulness in fixture review
-- review latency and cost
-- failure recovery
-- evidence-version traceability
-- audit reconstruction
-- panel-delta rate
-- caller panel preference when supplied
-- additional issue-catch rate
-- cross-review resolution and reviewer-C rates
-- caller override rate
-- latency and cost by A-only, A/B, cross-review, and C path
-- calibration only where both baseline and panel predictions are observable
+- [x] schedule and idempotency reliability
+- [x] reviewer independence
+- [x] result clarity and usefulness in fixture review
+- [x] synthetic review latency and cost aggregation
+- [x] failure recovery and safe terminal containment
+- [x] evidence-version traceability
+- [x] completed and terminal-state audit reconstruction
+- [x] directional panel-change rate
+- [x] caller panel preference when supplied
+- [x] additional issue-catch rate
+- [x] cross-review resolution and reviewer-C rates
+- [x] caller override rate
+- [x] latency and cost by A-only, A/B, cross-review, and C path
+- Deferred: calibration until both baseline and panel predictions are
+  observable against non-synthetic outcomes.
 
 ### Exit Gate
 
-- The complete acceptance checklist passes.
-- The fixture suite demonstrates clear, auditable recommendations.
-- No Conclave component has or requests Meta access.
+- [x] The complete local acceptance checklist passes.
+- [x] The fixture suite demonstrates clear, auditable recommendations.
+- [x] No Conclave component has or requests Meta access.
 
 ## MVP Acceptance Checklist
 
@@ -664,4 +674,8 @@ Its scope is limited to optional ad-performance review:
 
 ## Immediate Next Build
 
-1. Run the Phase 7 pilot with at least 30 synthetic or replayed cases.
+1. Freeze the deterministic polling MVP baseline and review its deployment
+   checklist.
+2. Collect outcome-linked, non-synthetic evidence before assigning permanent
+   reviewer positions.
+3. Keep any future hosted or live-provider run behind explicit approval.

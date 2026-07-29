@@ -5,6 +5,7 @@ import os
 import signal
 import socket
 from datetime import UTC, datetime
+from pathlib import Path
 from threading import Event
 
 from conclave.auditing.verification import AuditVerifier
@@ -15,6 +16,7 @@ from conclave.fixtures import load_design_plan_revisions
 from conclave.intake import ReviewIntakeService
 from conclave.ledger.repository import LedgerRepository
 from conclave.orchestration.service import FixturePath, ReviewOrchestrator
+from conclave.pilot.runner import run_phase7_pilot
 from conclave.reviewers.factory import build_reviewer_runtime
 from conclave.runtime.processes import SchedulerProcess, WorkerProcess
 from conclave.scheduling.service import SchedulerService
@@ -68,6 +70,15 @@ def _parser() -> argparse.ArgumentParser:
         "seed-fixtures",
         help="Store the versioned development review plans.",
     )
+    pilot = subparsers.add_parser(
+        "phase7-pilot",
+        help="Run the local deterministic Phase 7 fixture pilot.",
+    )
+    pilot.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("pilot-results/phase7"),
+    )
 
     scheduler = subparsers.add_parser(
         "scheduler",
@@ -114,6 +125,19 @@ def main() -> None:
             f"{report.result_count} results, "
             f"{report.feedback_count} feedback records, and "
             f"{report.comparator_case_count} comparator cases."
+        )
+        return
+    if args.command == "phase7-pilot":
+        report = run_phase7_pilot(output_dir=args.output_dir)
+        print(
+            json.dumps(
+                {
+                    "output": str(
+                        args.output_dir / "phase7-pilot-results.json"
+                    ),
+                    **report["summary"],
+                }
+            )
         )
         return
 

@@ -1,0 +1,518 @@
+{
+  "dataset_version": "phase7-pilot/v1",
+  "as_of": "2026-07-28",
+  "cases": [
+    {
+      "case_id": "phase7-001",
+      "title": "Healthy scheduled observation",
+      "request_fixture": "01-normal-healthy.json",
+      "scenario": "a_observe",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "inconclusive",
+      "coverage": ["healthy", "a_only", "auto_resolved"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "a_only",
+        "status": "auto_resolved",
+        "category": "observe"
+      }
+    },
+    {
+      "case_id": "phase7-002",
+      "title": "Healthy scheduled evidence collection",
+      "request_fixture": "01-normal-healthy.json",
+      "scenario": "a_collect",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "inconclusive",
+      "coverage": ["healthy", "a_only", "collect_more_data"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "a_only",
+        "status": "auto_resolved",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-003",
+      "title": "Manual non-material audit sample",
+      "request_fixture": "01-normal-healthy.json",
+      "scenario": "a_observe",
+      "trigger_kind": "manual",
+      "feedback_profile": "inconclusive",
+      "coverage": ["manual", "a_only", "auto_resolved"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "a_only",
+        "status": "auto_resolved",
+        "category": "observe"
+      }
+    },
+    {
+      "case_id": "phase7-004",
+      "title": "Idempotent repeated healthy intake",
+      "request_fixture": "01-normal-healthy.json",
+      "scenario": "a_collect",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "inconclusive",
+      "repeat_intake": true,
+      "coverage": ["idempotency", "a_only", "collect_more_data"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "a_only",
+        "status": "auto_resolved",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-005",
+      "title": "Healthy observation with replayed intake",
+      "request_fixture": "01-normal-healthy.json",
+      "scenario": "a_observe",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "inconclusive",
+      "repeat_intake": true,
+      "coverage": ["idempotency", "a_only", "auto_resolved"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "a_only",
+        "status": "auto_resolved",
+        "category": "observe"
+      }
+    },
+    {
+      "case_id": "phase7-006",
+      "title": "Reviewer A timeout retry",
+      "request_fixture": "01-normal-healthy.json",
+      "scenario": "a_observe",
+      "trigger_kind": "scheduled_a",
+      "fault": "timeout_a",
+      "feedback_profile": "inconclusive",
+      "coverage": ["timeout", "retry", "a_only"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "a_only",
+        "status": "auto_resolved",
+        "category": "observe"
+      }
+    },
+    {
+      "case_id": "phase7-007",
+      "title": "Partial evidence scheduled panel",
+      "request_fixture": "02-weak-evidence.json",
+      "scenario": "ab_collect",
+      "trigger_kind": "scheduled_b",
+      "feedback_profile": "no_effect_neither",
+      "coverage": ["partial", "ab_agreement", "collect_more_data"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "ab_agreement",
+        "status": "auto_resolved",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-008",
+      "title": "Partial evidence with panel preference",
+      "request_fixture": "02-weak-evidence.json",
+      "scenario": "ab_collect",
+      "trigger_kind": "scheduled_b",
+      "feedback_profile": "beneficial_panel",
+      "coverage": ["partial", "ab_agreement", "feedback"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "ab_agreement",
+        "status": "auto_resolved",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-009",
+      "title": "Partial evidence with baseline preference",
+      "request_fixture": "02-weak-evidence.json",
+      "scenario": "ab_collect",
+      "trigger_kind": "scheduled_b",
+      "feedback_profile": "beneficial_baseline",
+      "coverage": ["partial", "ab_agreement", "feedback"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "ab_agreement",
+        "status": "auto_resolved",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-010",
+      "title": "Idempotent partial evidence intake",
+      "request_fixture": "02-weak-evidence.json",
+      "scenario": "ab_collect",
+      "trigger_kind": "scheduled_b",
+      "feedback_profile": "no_effect_neither",
+      "repeat_intake": true,
+      "coverage": ["partial", "idempotency", "ab_agreement"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "ab_agreement",
+        "status": "auto_resolved",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-011",
+      "title": "Tracking failure diagnosis",
+      "request_fixture": "03-tracking-unhealthy.json",
+      "scenario": "ab_tracking",
+      "trigger_kind": "scheduled_b",
+      "feedback_profile": "beneficial_panel",
+      "coverage": ["tracking_unhealthy", "material", "ab_agreement"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "ab_agreement",
+        "status": "caller_decision_required",
+        "category": "tracking_or_data_problem"
+      }
+    },
+    {
+      "case_id": "phase7-012",
+      "title": "Tracking failure restraint",
+      "request_fixture": "03-tracking-unhealthy.json",
+      "scenario": "ab_collect",
+      "trigger_kind": "scheduled_b",
+      "feedback_profile": "no_effect_neither",
+      "coverage": ["tracking_unhealthy", "ab_agreement", "collect_more_data"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "ab_agreement",
+        "status": "auto_resolved",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-013",
+      "title": "Tracking failure diagnosis with caller rejection",
+      "request_fixture": "03-tracking-unhealthy.json",
+      "scenario": "ab_tracking",
+      "trigger_kind": "scheduled_b",
+      "feedback_profile": "harmful_baseline",
+      "coverage": ["tracking_unhealthy", "material", "caller_override"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "ab_agreement",
+        "status": "caller_decision_required",
+        "category": "tracking_or_data_problem"
+      }
+    },
+    {
+      "case_id": "phase7-014",
+      "title": "Material creative pause agreement",
+      "request_fixture": "04-surviving-reviewer-conflict.json",
+      "scenario": "ab_pause",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "beneficial_panel",
+      "coverage": ["material", "operational_change", "ab_agreement"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "ab_agreement",
+        "status": "caller_decision_required",
+        "category": "operational_change"
+      }
+    },
+    {
+      "case_id": "phase7-015",
+      "title": "Material creative pause with caller modification",
+      "request_fixture": "04-surviving-reviewer-conflict.json",
+      "scenario": "ab_pause",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "beneficial_baseline",
+      "coverage": ["material", "operational_change", "caller_override"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "ab_agreement",
+        "status": "caller_decision_required",
+        "category": "operational_change"
+      }
+    },
+    {
+      "case_id": "phase7-016",
+      "title": "Bounded experiment agreement",
+      "request_fixture": "01-normal-healthy.json",
+      "scenario": "ab_experiment",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "mixed_panel",
+      "coverage": ["material", "experiment", "ab_agreement"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "ab_agreement",
+        "status": "caller_decision_required",
+        "category": "experiment"
+      }
+    },
+    {
+      "case_id": "phase7-017",
+      "title": "Bounded experiment with beneficial outcome",
+      "request_fixture": "01-normal-healthy.json",
+      "scenario": "ab_experiment",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "beneficial_panel",
+      "coverage": ["material", "experiment", "feedback"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "ab_agreement",
+        "status": "caller_decision_required",
+        "category": "experiment"
+      }
+    },
+    {
+      "case_id": "phase7-018",
+      "title": "Disagreement converges to evidence collection",
+      "request_fixture": "04-surviving-reviewer-conflict.json",
+      "scenario": "cross_collect",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "beneficial_panel",
+      "coverage": ["disagreement", "cross_review", "cross_review_resolved"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "cross_review_resolved",
+        "status": "caller_decision_required",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-019",
+      "title": "Disagreement converges with no observed effect",
+      "request_fixture": "04-surviving-reviewer-conflict.json",
+      "scenario": "cross_collect",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "no_effect_neither",
+      "coverage": ["disagreement", "cross_review", "cross_review_resolved"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "cross_review_resolved",
+        "status": "caller_decision_required",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-020",
+      "title": "Disagreement converges to material pause",
+      "request_fixture": "04-surviving-reviewer-conflict.json",
+      "scenario": "cross_pause",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "beneficial_panel",
+      "coverage": ["disagreement", "cross_review", "material"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "cross_review_resolved",
+        "status": "caller_decision_required",
+        "category": "operational_change"
+      }
+    },
+    {
+      "case_id": "phase7-021",
+      "title": "Failed goal forces bounded cross review",
+      "request_fixture": "01-normal-healthy.json",
+      "scenario": "failed_goal_collect",
+      "trigger_kind": "failed_goal",
+      "feedback_profile": "mixed_panel",
+      "coverage": ["failed_goal", "cross_review", "hard_trigger"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "cross_review_resolved",
+        "status": "caller_decision_required",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-022",
+      "title": "Operator recovers one failed cross review",
+      "request_fixture": "04-surviving-reviewer-conflict.json",
+      "scenario": "cross_collect",
+      "trigger_kind": "scheduled_a",
+      "fault": "cross_failure_once",
+      "feedback_profile": "beneficial_panel",
+      "recover_cross_review": true,
+      "coverage": ["failure_recovery", "cross_review", "audit"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "cross_review_resolved",
+        "status": "caller_decision_required",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-023",
+      "title": "Cross-review timeout retry",
+      "request_fixture": "04-surviving-reviewer-conflict.json",
+      "scenario": "cross_collect",
+      "trigger_kind": "scheduled_a",
+      "fault": "timeout_cross",
+      "feedback_profile": "beneficial_panel",
+      "coverage": ["timeout", "retry", "cross_review"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "cross_review_resolved",
+        "status": "caller_decision_required",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-024",
+      "title": "Reviewer C selects restrained panel result",
+      "request_fixture": "04-surviving-reviewer-conflict.json",
+      "scenario": "c_select_b",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "beneficial_panel",
+      "coverage": ["disagreement", "cross_review", "tie_breaker"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "c_tie_broken",
+        "status": "caller_decision_required",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-025",
+      "title": "Reviewer C selects material panel result",
+      "request_fixture": "04-surviving-reviewer-conflict.json",
+      "scenario": "c_select_a",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "beneficial_panel",
+      "coverage": ["disagreement", "material", "tie_breaker"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "c_tie_broken",
+        "status": "caller_decision_required",
+        "category": "operational_change"
+      }
+    },
+    {
+      "case_id": "phase7-026",
+      "title": "Reviewer C restraint with caller baseline preference",
+      "request_fixture": "04-surviving-reviewer-conflict.json",
+      "scenario": "c_select_b",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "beneficial_baseline",
+      "coverage": ["disagreement", "caller_override", "tie_breaker"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "c_tie_broken",
+        "status": "caller_decision_required",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-027",
+      "title": "Reviewer C material selection with harmful outcome",
+      "request_fixture": "04-surviving-reviewer-conflict.json",
+      "scenario": "c_select_a",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "harmful_baseline",
+      "coverage": ["disagreement", "material", "tie_breaker"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "c_tie_broken",
+        "status": "caller_decision_required",
+        "category": "operational_change"
+      }
+    },
+    {
+      "case_id": "phase7-028",
+      "title": "Reviewer C synthesizes a bounded experiment",
+      "request_fixture": "04-surviving-reviewer-conflict.json",
+      "scenario": "c_synthesize",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "mixed_panel",
+      "coverage": ["disagreement", "experiment", "tie_breaker"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "c_tie_broken",
+        "status": "caller_decision_required",
+        "category": "experiment"
+      }
+    },
+    {
+      "case_id": "phase7-029",
+      "title": "Reviewer C returns insufficient-evidence fallback",
+      "request_fixture": "04-surviving-reviewer-conflict.json",
+      "scenario": "c_insufficient",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "no_effect_neither",
+      "coverage": ["disagreement", "collect_more_data", "tie_breaker"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "c_tie_broken",
+        "status": "caller_decision_required",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-030",
+      "title": "Stale evidence stops before reviewer invocation",
+      "request_fixture": "01-normal-healthy.json",
+      "scenario": "stale",
+      "trigger_kind": "scheduled_a",
+      "feedback_profile": "none",
+      "coverage": ["stale", "terminal_state", "no_provider_call"],
+      "expected": {
+        "final_state": "stale_or_ineligible_evidence"
+      }
+    },
+    {
+      "case_id": "phase7-031",
+      "title": "Malformed Reviewer A output is contained",
+      "request_fixture": "01-normal-healthy.json",
+      "scenario": "a_observe",
+      "trigger_kind": "scheduled_a",
+      "fault": "malformed_a",
+      "feedback_profile": "none",
+      "coverage": ["malformed_output", "reviewer_a_failed", "audit"],
+      "expected": {
+        "final_state": "reviewer_a_failed"
+      }
+    },
+    {
+      "case_id": "phase7-032",
+      "title": "Malformed cross-review output is contained",
+      "request_fixture": "04-surviving-reviewer-conflict.json",
+      "scenario": "cross_collect",
+      "trigger_kind": "scheduled_a",
+      "fault": "malformed_cross",
+      "feedback_profile": "none",
+      "coverage": ["malformed_output", "cross_review_failed", "audit"],
+      "expected": {
+        "final_state": "cross_review_failed"
+      }
+    },
+    {
+      "case_id": "phase7-033",
+      "title": "Reviewer B timeout retry",
+      "request_fixture": "02-weak-evidence.json",
+      "scenario": "ab_collect",
+      "trigger_kind": "scheduled_b",
+      "fault": "timeout_b",
+      "feedback_profile": "no_effect_neither",
+      "coverage": ["timeout", "retry", "ab_agreement"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "ab_agreement",
+        "status": "auto_resolved",
+        "category": "collect_more_data"
+      }
+    },
+    {
+      "case_id": "phase7-034",
+      "title": "Second cross-review timeout retry",
+      "request_fixture": "04-surviving-reviewer-conflict.json",
+      "scenario": "cross_pause",
+      "trigger_kind": "scheduled_a",
+      "fault": "timeout_cross",
+      "feedback_profile": "beneficial_panel",
+      "coverage": ["timeout", "retry", "material", "cross_review"],
+      "expected": {
+        "final_state": "evaluated",
+        "route": "cross_review_resolved",
+        "status": "caller_decision_required",
+        "category": "operational_change"
+      }
+    }
+  ]
+}

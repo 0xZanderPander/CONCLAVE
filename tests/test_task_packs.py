@@ -322,6 +322,7 @@ def test_comparator_reproduces_weighted_magnitude_case_and_conservative_merge() 
     assert comparison.weighted_distance == pytest.approx(0.04)
     assert not comparison.requires_cross_review
     assert comparison.merged_assessment is not None
+    assert comparison.merged_assessment.summary == "Structured fixture assessment."
     assert comparison.merged_assessment.actions[0].magnitude == 0.1
     assert comparison.merged_assessment.actions[0].confidence == 0.7
 

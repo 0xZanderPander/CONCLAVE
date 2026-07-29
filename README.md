@@ -508,12 +508,12 @@ Completed foundation:
 
 Next:
 
-1. verify Phase 6 migrations `0010` and `0011`, concurrent feedback/evaluation,
-   cleanup, and advisors on PostgreSQL
-2. run the 30-case Phase 7 fixture pilot using the implemented directional
-   evaluation metrics
-3. use outcome-linked evidence, rather than one-off acceptance outputs, before
-   assigning permanent reviewer positions
+1. review the passing 34-case Phase 7 pilot and freeze the deterministic polling
+   MVP baseline
+2. prepare the deployment checklist without broadening Conclave into execution
+   or domain ownership
+3. use outcome-linked, non-synthetic evidence rather than compatibility or
+   fixture outputs before assigning permanent reviewer positions
 
 Non-local API mode requires explicit bearer authentication and caller scopes.
 Local fixture mode remains available only in development and test.

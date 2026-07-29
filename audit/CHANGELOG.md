@@ -9,6 +9,7 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 
 | Date | Rev | Requested by | Applied by | Summary |
 |---|---|---|---|---|
+| 2026-07-28 | r26 | Al | Codex | Added and passed the 34-case deterministic Phase 7 pilot, route and directional metrics, manual clarity review, terminal audit checks, and fixture hardening |
 | 2026-07-28 | r25 | Al | Codex | Added immutable Phase 6 reviewer-evaluation candidates, complete baseline/result comparison, directional route metrics, retrieval APIs, and migration 0011 |
 | 2026-07-28 | r24 | Al | Codex | Added the Phase 6 immutable feedback foundation, authenticated intake, idempotency, safe events, audit reconstruction, and migration 0010 |
 | 2026-07-28 | r23 | Al | Codex | Added the Gemini Interactions adapter and passed its explicitly approved one-attempt free-tier acceptance |
@@ -36,6 +37,55 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 | 2026-07-14 | r1 | Al | Al | Initial Marketing-first, read-only MVP design (baseline of these docs) |
 
 ---
+
+## r26 — 2026-07-28
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** deterministic Phase 7 fixture dataset, pilot runner, synthetic
+telemetry, feedback/evaluation metrics, manual result review, failure
+containment, audit reconstruction, and roadmap closure
+
+### Implementation
+
+1. Added 34 self-describing Phase 7 cases covering healthy, partial, stale,
+   tracking-unhealthy, failed-goal, material, disagreement, cross-review,
+   reviewer-C, timeout, malformed-output, idempotency, and recovery paths.
+2. Added a local assessment-v2 pilot runtime with deterministic attempts,
+   latency, token, and cost telemetry. It has no network or provider path.
+3. Added a reusable pilot command that runs automatic routing, submits
+   synthetic feedback, records directional evaluation candidates, verifies
+   completed audits, reconstructs terminal event streams, and writes a
+   machine-readable result artifact.
+4. Added an explicit manual review of all result archetypes and documented
+   the synthetic-evidence boundary.
+5. Deduplicated exact compatible-review summaries while preserving both
+   reviewers' claims, invocation records, and audit history.
+
+### Verification
+
+- All 34 cases reach their expected outcomes.
+- 31 results complete through feedback, evaluation, and full audit
+  reconstruction.
+- One stale case and two malformed-output cases stop safely and pass terminal
+  event-stream reconstruction.
+- Four retryable timeouts recover within their bounded attempts, and one
+  failed cross review completes through the controlled operator recovery.
+- All 34 independent-context, snapshot-consistency, and audit-trace checks
+  pass; all 31 completed results pass evidence traceability and clarity checks.
+- Ruff passes.
+- The complete local suite passes with 127 tests and 11 expected opt-in skips.
+- No OpenAI, Anthropic, Gemini, Marketing OS, Meta, or hosted database call was
+  made.
+
+### Interpretation boundary
+
+- Route, preference, panel-change, latency, and cost metrics are directional
+  fixture evidence.
+- Synthetic feedback does not establish causal panel value, provider quality,
+  production prevalence, or real cost.
+- Permanent reviewer assignment remains deferred until outcome-linked,
+  non-synthetic evidence exists.
 
 ## r25 — 2026-07-28
 

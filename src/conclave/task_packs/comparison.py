@@ -255,9 +255,14 @@ def _merged_assessment(left: Assessment, right: Assessment) -> Assessment:
     review_times = [
         value for value in (left.review_after_hours, right.review_after_hours) if value is not None
     ]
+    summary = (
+        left.summary
+        if left.summary.strip() == right.summary.strip()
+        else f"{left.summary.rstrip()} {right.summary.lstrip()}"
+    )
     return left.model_copy(
         update={
-            "summary": f"{left.summary} {right.summary}",
+            "summary": summary,
             "claims": tuple(dict.fromkeys((*left.claims, *right.claims))),
             "actions": actions,
             "material": left.material or right.material,
