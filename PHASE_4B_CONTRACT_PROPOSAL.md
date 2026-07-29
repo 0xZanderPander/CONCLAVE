@@ -349,6 +349,6 @@ The PostgreSQL concurrency and full-flow suite passes against Supabase.
 The complete six-call OpenAI full-conflict case passes within its $0.90
 aggregate ceiling.
 
-1. configure the implemented Anthropic Messages adapter with a separate
-   credential; and
-2. run a cross-provider case only after that credential is configured.
+Phase 4B has no remaining release gate. Anthropic and Google authentication
+checks, provider-diversity evaluation, and Gemini adapter work belong to the
+separate post-Phase-4B provider-diversity gate.

@@ -9,6 +9,7 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 
 | Date | Rev | Requested by | Applied by | Summary |
 |---|---|---|---|---|
+| 2026-07-28 | r19 | Al | Codex | Recentered the canonical plan on provider-diversity validation, Phase 6 feedback evaluation, and the Phase 7 fixture pilot |
 | 2026-07-28 | r18 | Al | Codex | Passed the complete bounded live OpenAI Phase 4B panel and closed its release gate |
 | 2026-07-28 | r17 | Al | Codex | Added the second provider adapter and hardened production evidence paths and stage-specific limits from bounded live testing |
 | 2026-07-28 | r16 | Al | Codex | Implemented typed A/B cross review, two-stage C production contracts, and controlled cross-review recovery |
@@ -27,6 +28,42 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 | 2026-07-24 | r3 | Al | Codex | Separated Marketing domain ownership from the Conclave kernel; replaced direct Meta, Telegram, policy, outcome, and learning ownership with versioned request/result/feedback contracts |
 | 2026-07-24 | r2 | Al | Conclave assistant (Cowork session) | Three-reviewer panel, cadence-based ping-pong, tolerance-triggered cross review, tie-breaker, baseline, configurable adjudicator, Hermes learning seam, domain contract, testable Phase 0 gate |
 | 2026-07-14 | r1 | Al | Al | Initial Marketing-first, read-only MVP design (baseline of these docs) |
+
+---
+
+## r19 — 2026-07-28
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** `README.md`, `MVP_project_architecture.md`,
+`MVP_build_roadmap.md`, `PHASE_4B_CONTRACT_PROPOSAL.md`,
+`audit/CHANGELOG.md`
+
+### Why
+
+Phase 4B is complete and both additional provider credentials now authenticate.
+The canonical plan needed to separate provider compatibility testing from the
+next major product phase: outcome-linked reviewer evaluation.
+
+### What changed
+
+1. Closed the Phase 4B release gate.
+2. Added a provider-diversity gate: one low-cost Claude review, one mixed panel
+   with no more than two Claude calls, a Gemini adapter, one free-tier Gemini
+   review, and structured provider comparison before permanent slot assignment.
+3. Recorded that Anthropic and Google credentials passed no-generation
+   authentication checks, without claiming live reviewer compatibility.
+4. Made Phase 6 durable feedback linkage and directional panel-value evaluation
+   the next major implementation phase.
+5. Kept Phase 7 as a minimum 30-case synthetic or replayed pilot with no live
+   Marketing dependency.
+
+### Not changed
+
+- Provider availability does not determine a permanent reviewer assignment.
+- Conclave does not own caller decisions, outcomes, causal interpretation, or
+  domain learning.
+- Marketing OS integration remains optional and deferred.
 
 ---
 

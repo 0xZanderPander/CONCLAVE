@@ -397,6 +397,29 @@ policy remain deferred; polling is the current MVP return path.
 - [ ] Optional callback delivery, if added, retries without duplicating a
   result.
 
+## Provider Diversity Gate Before Phase 6
+
+**Status:** credentials authenticated without generation. The Anthropic adapter
+passes mocked contract tests. The Gemini adapter and live provider comparisons
+remain.
+
+### Build
+
+- [x] Anthropic credential authentication check without a model generation
+- [x] Google credential authentication check without a model generation
+- [x] Anthropic adapter behind the common reviewer interface
+- [ ] one low-cost Anthropic independent-review acceptance call
+- [ ] one bounded mixed panel with OpenAI in A and C and Claude in B
+- [ ] no more than two Claude calls in that mixed-panel acceptance run
+- [ ] Gemini adapter behind the common reviewer interface
+- [ ] mocked Gemini contract, retry, telemetry, and failure tests
+- [ ] one free-tier Gemini independent-review acceptance call
+- [ ] comparison of OpenAI, Claude, and Gemini structured outputs before
+  permanent reviewer-slot assignment
+
+Passing this gate proves provider compatibility and creates evidence for slot
+selection. It does not prove that multiple providers improve decisions.
+
 ## Phase 6: External Feedback and Reviewer Evaluation
 
 **Status:** contract fixture only. The feedback schema validates, but feedback
@@ -534,6 +557,13 @@ Its scope is limited to optional ad-performance review:
 
 ## Immediate Next Build
 
-1. Configure a separate Anthropic key.
-2. Run cross-provider fixtures after that credential is configured before
-   claiming perspective-diversity benefit.
+1. Run one low-cost Anthropic independent-review acceptance call.
+2. Run one bounded mixed panel with OpenAI in A and C and Claude in B, allowing
+   no more than two Claude calls.
+3. Build and mock-test the Gemini adapter.
+4. Run one free-tier Gemini independent-review acceptance call.
+5. Compare all three providers before assigning permanent reviewer positions.
+6. Implement Phase 6 feedback persistence, API linkage, classification,
+   confounders, evidence quality, baseline-versus-panel comparison, and
+   reviewer/panel indicators.
+7. Run the Phase 7 pilot with at least 30 synthetic or replayed cases.

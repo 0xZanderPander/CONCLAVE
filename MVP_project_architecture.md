@@ -406,8 +406,16 @@ assessment, and C's later judgment.
 
 The second adapter uses Anthropic Messages with the same approved contracts,
 structured JSON Schema output, no tools, and no provider conversation state.
-It is fixture-tested but not live-tested. Cross-provider use remains disabled
-until a separate Anthropic credential is configured.
+It is fixture-tested but not live-tested. Its credential passed a
+no-generation model-list authentication check on 2026-07-28. The first mixed
+panel will place OpenAI in A and C and Claude in B, with at most two Claude
+calls if cross review is required.
+
+The Google credential also passed a no-generation authentication check.
+A Gemini adapter is not implemented. It must use the same provider contract,
+context validation, telemetry, cost-limit, and no-silent-fallback boundaries
+before any Gemini review is accepted. Available model names are not permanent
+slot assignments; model selection follows adapter and output comparison tests.
 
 The Phase 4A live gate intentionally used the same OpenAI model in both slots
 to verify the common rail. This is not evidence of multi-model benefit.

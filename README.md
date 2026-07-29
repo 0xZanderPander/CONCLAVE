@@ -32,9 +32,10 @@ and separate judgment, and controlled operator recovery from
 The complete six-call OpenAI Phase 4B acceptance panel passed on 2026-07-28
 within its $0.90 aggregate ceiling.
 OpenAI supports the complete approved panel contract. An Anthropic Messages
-adapter is also available behind the same provider-neutral interface for future
-cross-provider evaluation; no Anthropic live claim is made without its own key
-and test.
+adapter is also available behind the same provider-neutral interface. Anthropic
+and Google credentials passed no-generation authentication checks on
+2026-07-28. Anthropic has not yet completed a live review call, and the Gemini
+adapter is not implemented.
 
 Conclave does not depend on Marketing OS, and Marketing OS does not depend on
 Conclave.
@@ -483,9 +484,13 @@ Completed foundation:
 
 Next:
 
-1. configure a separate Anthropic key
-2. run cross-provider evaluation only after that separate provider credential is
-   configured
+1. run one low-cost Anthropic independent-review acceptance call
+2. run one bounded mixed panel with OpenAI in A and C and Claude in B, allowing
+   no more than two Claude calls
+3. implement and mock-test a Gemini adapter behind `ReviewerRuntime`
+4. run one free-tier Gemini independent-review acceptance call
+5. compare provider outputs before assigning permanent reviewer positions
+6. build Phase 6 durable feedback linkage and panel-value evaluation
 
 Non-local API mode requires explicit bearer authentication and caller scopes.
 Local fixture mode remains available only in development and test.
