@@ -9,6 +9,7 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 
 | Date | Rev | Requested by | Applied by | Summary |
 |---|---|---|---|---|
+| 2026-07-28 | r23 | Al | Codex | Added the Gemini Interactions adapter and passed its explicitly approved one-attempt free-tier acceptance |
 | 2026-07-28 | r22 | Al | Codex | Passed the bounded OpenAI-A/Claude-B/OpenAI-C panel with six one-attempt stages and exactly two Claude calls |
 | 2026-07-28 | r21 | Al | Codex | Passed the corrected one-attempt Claude A-only acceptance while keeping mixed-panel egress separately gated |
 | 2026-07-28 | r20 | Al | Codex | Stopped after the first Claude HTTP 400, diagnosed Anthropic schema incompatibility, and hardened the adapter without retrying |
@@ -31,6 +32,74 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 | 2026-07-24 | r3 | Al | Codex | Separated Marketing domain ownership from the Conclave kernel; replaced direct Meta, Telegram, policy, outcome, and learning ownership with versioned request/result/feedback contracts |
 | 2026-07-24 | r2 | Al | Conclave assistant (Cowork session) | Three-reviewer panel, cadence-based ping-pong, tolerance-triggered cross review, tie-breaker, baseline, configurable adjudicator, Hermes learning seam, domain contract, testable Phase 0 gate |
 | 2026-07-14 | r1 | Al | Al | Initial Marketing-first, read-only MVP design (baseline of these docs) |
+
+---
+
+## r23 — 2026-07-28
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** Google Gemini adapter, explicit runtime configuration, mocked and
+opt-in live tests, provider comparison, canonical status documents, and audit
+history
+
+### Provider basis
+
+- Google's current [Gemini 3.6 Flash model page](https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash)
+  identifies `gemini-3.6-flash` as the stable model and lists structured output
+  and thinking support.
+- The [Interactions API](https://ai.google.dev/api/interactions-api-v1) defines
+  the request, response, status, and token-usage fields used by the adapter.
+- The [structured-output guide](https://ai.google.dev/gemini-api/docs/structured-output)
+  defines the supported JSON Schema subset.
+- The [pricing page](https://ai.google.dev/gemini-api/docs/pricing) defines
+  current paid rates, the free tier, and its data-use distinction.
+
+### Implementation
+
+1. Added explicit `gemini` runtime selection with
+   `CONCLAVE_GOOGLE_API_KEY` and `CONCLAVE_GOOGLE_BASE_URL`; missing
+   configuration fails instead of falling back.
+2. Added a stateless Google Interactions adapter for stable
+   `gemini-3.6-flash`. It requests schema-shaped JSON, exposes no tools, sets
+   `store=false`, suppresses thought summaries, and maps the existing Conclave
+   reasoning policy onto Gemini's supported thinking levels.
+3. Added provider-facing JSON Schema normalization for Google's documented
+   subset while preserving full local Pydantic, evidence-reference, task-pack,
+   and orchestration validation.
+4. Added safe request/response identifiers and input, cached, output, thought,
+   total-token, latency, cost, finish-status, and pricing-version telemetry.
+   Raw provider responses and hidden reasoning remain unstored.
+
+### Acceptance result
+
+1. The mocked suite covers independent structured assessment, explicit
+   no-tools behavior, thinking-level mapping, retryable 429, permanent 400,
+   telemetry, preflight budget rejection, and contract rejection before
+   network access.
+2. Al explicitly approved sending the synthetic fixture and reviewer
+   prompt/schema to Google's free-tier API after being informed that Google may
+   use free-tier content to improve its products.
+3. The A-only `assessment-v2` acceptance called
+   `gemini-3.6-flash` exactly once. It passed without retry, fallback, provider
+   substitution, cross review, tool use, or raw-response storage.
+4. Gemini returned `observe`, adequate evidence, low risk, and 0.95 confidence.
+5. Safe telemetry recorded 2,268 ms provider latency, 1,612 input tokens,
+   299 output tokens, 0 reported thought tokens, 1,911 total tokens, and
+   $0 computed free-tier cost.
+
+### Interpretation
+
+- Gemini now satisfies the same provider-contract and accounting boundary as
+  the OpenAI and Anthropic adapters.
+- The available three-provider outputs are not a controlled quality benchmark:
+  the Gemini acceptance used the base A-only fixture, while the most detailed
+  OpenAI/Claude comparison used the surviving-conflict fixture and different
+  A/B roles.
+- No permanent reviewer slot is assigned. Phase 6 outcome-linked evaluation is
+  the next major gate.
+- No persistence schema changed, so no new PostgreSQL verification was
+  required.
 
 ---
 

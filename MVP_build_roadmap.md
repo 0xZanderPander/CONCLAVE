@@ -399,15 +399,13 @@ policy remain deferred; polling is the current MVP return path.
 
 ## Provider Diversity Gate Before Phase 6
 
-**Status:** credentials authenticated without generation. The first bounded
-Anthropic review attempt was rejected with HTTP 400 before generation, and no
-automatic retry or mixed panel was run. The adapter now transforms Pydantic
-schemas to Anthropic's supported structured-output subset and honors the
-configured reasoning effort. A separately approved corrected one-attempt
-review passed the A-only `assessment-v2` path for $0.022018. The mixed panel,
-using OpenAI in A/C and Claude in B, then passed all six one-attempt stages
-with exactly two Claude calls and $0.1731145 total computed cost. The Gemini
-adapter and three-provider comparison remain.
+**Status:** complete for provider compatibility. The corrected one-attempt
+Claude A-only review passed for $0.022018. The OpenAI-A/Claude-B/OpenAI-C panel
+then passed all six one-attempt stages with exactly two Claude calls and
+$0.1731145 total computed cost. The Gemini adapter's mocked boundary suite and
+separately approved one-attempt free-tier A-only review also passed. The
+structured comparison is recorded below; it does not justify permanent
+reviewer-slot assignment.
 
 ### Build
 
@@ -417,10 +415,10 @@ adapter and three-provider comparison remain.
 - [x] one low-cost Anthropic independent-review acceptance call
 - [x] one bounded mixed panel with OpenAI in A and C and Claude in B
 - [x] no more than two Claude calls in that mixed-panel acceptance run
-- [ ] Gemini adapter behind the common reviewer interface
-- [ ] mocked Gemini contract, retry, telemetry, and failure tests
-- [ ] one free-tier Gemini independent-review acceptance call
-- [ ] comparison of OpenAI, Claude, and Gemini structured outputs before
+- [x] Gemini adapter behind the common reviewer interface
+- [x] mocked Gemini contract, retry, telemetry, and failure tests
+- [x] one free-tier Gemini independent-review acceptance call
+- [x] comparison of OpenAI, Claude, and Gemini structured outputs before
   permanent reviewer-slot assignment
 
 Passing this gate proves provider compatibility and creates evidence for slot
@@ -486,6 +484,36 @@ selection. It does not prove that multiple providers improve decisions.
 - Interpretation: this proves transport and contract compatibility only. It is
   not evidence that Claude is a better B, that the panel improved the
   recommendation, or that any observed difference is causal.
+
+### Gemini free-tier acceptance — 2026-07-28
+
+- Authorization: Al explicitly approved one request containing only Conclave's
+  synthetic fixture and reviewer prompt/schema after being told that Google may
+  use free-tier content to improve its products.
+- Route: A-only independent review using stable `gemini-3.6-flash` through the
+  current Interactions API.
+- Bound: one provider attempt, low thinking, 4,000 output tokens, a $0.01
+  Conclave ceiling, and free-tier pricing pinned at $0.
+- Result: one successful provider attempt and one contract-valid
+  `assessment-v2`; no tool, retry, fallback, provider substitution, raw
+  response storage, or thought summary was used.
+- Output: `observe`, low risk, 0.95 confidence, adequate evidence.
+- Telemetry: 2,268 ms provider latency, 1,612 input tokens, 299 output tokens,
+  0 reported thought tokens, 1,911 total tokens, and $0 computed free-tier
+  cost.
+
+### Three-provider structured comparison
+
+| Evidence available | Structured result | What it establishes |
+|---|---|---|
+| OpenAI A on the surviving-conflict fixture | `operational_change`, adequate evidence, medium risk, 0.78 confidence, three claims, one action | Complete panel-contract compatibility |
+| Claude B on that same fixture | `operational_change`, adequate evidence, low risk, 0.62 confidence, six claims, two actions | Cross-provider compatibility and a materially different structured assessment |
+| Gemini A on the base A-only fixture | `observe`, adequate evidence, low risk, 0.95 confidence | Gemini contract and transport compatibility |
+
+The Gemini run used a different fixture from the surviving-conflict panel, and
+OpenAI and Claude occupied different reviewer roles. The values therefore
+cannot be treated as an apples-to-apples quality ranking. No permanent slot is
+assigned; Phase 6 outcome-linked evaluation is the next decision-quality gate.
 
 ## Phase 6: External Feedback and Reviewer Evaluation
 

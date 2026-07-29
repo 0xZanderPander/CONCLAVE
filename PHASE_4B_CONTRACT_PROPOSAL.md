@@ -363,3 +363,12 @@ approved OpenAI-A/Claude-B/OpenAI-C mixed panel also passed all six bounded
 stages with one attempt each and exactly two Claude calls. These results close
 the Claude compatibility portion of the post-Phase-4B provider-diversity gate;
 they do not assign permanent reviewer positions or prove panel value.
+
+The Gemini portion of that separate gate also passed on 2026-07-28. The
+tool-free Interactions adapter, mocked contract/failure/telemetry/budget suite,
+and explicitly approved one-attempt `gemini-3.6-flash` A-only acceptance all
+completed successfully. The call returned valid `assessment-v2` output in
+2,268 ms using 1,911 total tokens at $0 free-tier cost. The three-provider
+comparison is descriptive only because the acceptance runs did not hold both
+fixture and reviewer role constant. Permanent slot assignment remains
+deferred to Phase 6 outcome-linked evaluation.

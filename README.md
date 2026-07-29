@@ -45,7 +45,17 @@ provider retry was used. The bounded OpenAI-A/Claude-B/OpenAI-C mixed panel
 then passed all six stages with one attempt each, exactly two Claude calls, and
 $0.1731145 total computed cost. Reviewer C selected B while the recommendation
 category remained `operational_change`; the result stayed
-`caller_decision_required`. The Gemini adapter is not implemented.
+`caller_decision_required`.
+
+A Google Gemini Interactions adapter is now available behind the same
+provider-neutral runtime. It uses `gemini-3.6-flash`, tool-free structured
+output, provider-specific schema normalization, explicit thinking levels,
+free-tier-aware pricing, and the existing Conclave validation and telemetry
+boundaries. After explicit approval of the synthetic prompt/schema egress, its
+one-attempt A-only acceptance passed in 2,268 ms with 1,612 input, 299 output,
+0 reported thought, and 1,911 total tokens at $0 free-tier cost. Gemini returned
+`observe`, low risk, 0.95 confidence, and adequate evidence. This proves
+compatibility only; no provider has been assigned a permanent reviewer slot.
 
 Conclave does not depend on Marketing OS, and Marketing OS does not depend on
 Conclave.
@@ -471,7 +481,8 @@ Completed foundation:
 10. registered `marketing-ads/v1` task-pack validation, deterministic
     eligibility and materiality checks, weighted comparison, hard triggers,
     conservative merge, and automatic panel routing
-11. explicit fixture, OpenAI, Anthropic, or multi-provider runtime selection
+11. explicit fixture, OpenAI, Anthropic, Gemini, or multi-provider runtime
+    selection
     with no production fixture fallback
 12. a stateless, tool-free OpenAI Responses adapter for blind, independently
     prompted reviewers A and B with strict structured output and
@@ -491,13 +502,15 @@ Completed foundation:
     cross-review invocation and preserves earlier attempts
 20. a fixture-tested Anthropic Messages adapter plus stage-specific provider
     limits for larger bounded review contexts
+21. a fixture-tested Google Gemini Interactions adapter with explicit
+    configuration, tool-free structured output, safe thought-token telemetry,
+    and one successful free-tier acceptance attempt
 
 Next:
 
-1. implement and mock-test a Gemini adapter behind `ReviewerRuntime`
-2. run one free-tier Gemini independent-review acceptance call
-3. compare provider outputs before assigning permanent reviewer positions
-4. build Phase 6 durable feedback linkage and panel-value evaluation
+1. build Phase 6 durable feedback linkage and panel-value evaluation
+2. use outcome-linked evidence, rather than one-off acceptance outputs, before
+   assigning permanent reviewer positions
 
 Non-local API mode requires explicit bearer authentication and caller scopes.
 Local fixture mode remains available only in development and test.

@@ -7,6 +7,7 @@ DEFAULT_DATABASE_URL = "postgresql+psycopg://conclave:conclave@localhost:5432/co
 DEFAULT_LOG_LEVEL = "INFO"
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1"
+DEFAULT_GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 
 def _integer(values: Mapping[str, str], name: str, default: int) -> int:
@@ -38,6 +39,8 @@ class Settings:
     openai_base_url: str = DEFAULT_OPENAI_BASE_URL
     anthropic_api_key: str | None = field(default=None, repr=False)
     anthropic_base_url: str = DEFAULT_ANTHROPIC_BASE_URL
+    google_api_key: str | None = field(default=None, repr=False)
+    google_base_url: str = DEFAULT_GOOGLE_BASE_URL
 
     def __post_init__(self) -> None:
         if self.caller_auth_mode not in {"local_fixture", "static_bearer"}:
@@ -57,6 +60,7 @@ class Settings:
             "fixture",
             "openai",
             "anthropic",
+            "gemini",
             "multi_provider",
         }:
             raise ValueError("CONCLAVE_REVIEWER_RUNTIME_MODE is invalid")
@@ -71,6 +75,8 @@ class Settings:
             raise ValueError("the OpenAI reviewer runtime requires an API key")
         if self.reviewer_runtime_mode == "anthropic" and not self.anthropic_api_key:
             raise ValueError("the Anthropic reviewer runtime requires an API key")
+        if self.reviewer_runtime_mode == "gemini" and not self.google_api_key:
+            raise ValueError("the Gemini reviewer runtime requires a Google API key")
         if self.reviewer_runtime_mode == "multi_provider" and (
             not self.openai_api_key or not self.anthropic_api_key
         ):
@@ -119,6 +125,11 @@ class Settings:
             anthropic_base_url=values.get(
                 "CONCLAVE_ANTHROPIC_BASE_URL",
                 DEFAULT_ANTHROPIC_BASE_URL,
+            ),
+            google_api_key=values.get("CONCLAVE_GOOGLE_API_KEY"),
+            google_base_url=values.get(
+                "CONCLAVE_GOOGLE_BASE_URL",
+                DEFAULT_GOOGLE_BASE_URL,
             ),
         )
         return settings

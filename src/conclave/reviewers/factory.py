@@ -1,6 +1,7 @@
 from conclave.config import Settings
 from conclave.reviewers.anthropic import AnthropicMessagesProvider
 from conclave.reviewers.development import DevelopmentReviewerRuntime
+from conclave.reviewers.gemini import GeminiInteractionsProvider
 from conclave.reviewers.openai import OpenAIResponsesProvider
 from conclave.reviewers.runtime import ProviderRegistryRuntime, ReviewerRuntime
 
@@ -30,6 +31,18 @@ def build_reviewer_runtime(settings: Settings) -> ReviewerRuntime:
                 "anthropic": AnthropicMessagesProvider(
                     api_key=settings.anthropic_api_key,
                     base_url=settings.anthropic_base_url,
+                )
+            },
+            max_attempts=2,
+        )
+    if settings.reviewer_runtime_mode == "gemini":
+        if settings.google_api_key is None:
+            raise ValueError("the Gemini reviewer runtime requires a Google API key")
+        return ProviderRegistryRuntime(
+            {
+                "google": GeminiInteractionsProvider(
+                    api_key=settings.google_api_key,
+                    base_url=settings.google_base_url,
                 )
             },
             max_attempts=2,

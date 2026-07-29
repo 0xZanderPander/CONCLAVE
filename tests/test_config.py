@@ -45,6 +45,9 @@ def test_production_reviewer_runtime_requires_an_explicit_provider() -> None:
     with pytest.raises(ValueError, match="Anthropic reviewer runtime"):
         Settings(reviewer_runtime_mode="anthropic")
 
+    with pytest.raises(ValueError, match="Google API key"):
+        Settings(reviewer_runtime_mode="gemini")
+
     with pytest.raises(ValueError, match="OpenAI and Anthropic"):
         Settings(
             reviewer_runtime_mode="multi_provider",
@@ -75,3 +78,17 @@ def test_multi_provider_runtime_registers_both_explicit_adapters() -> None:
     )
 
     assert isinstance(runtime, ProviderRegistryRuntime)
+
+
+def test_gemini_runtime_requires_and_registers_its_explicit_adapter() -> None:
+    settings = Settings.from_environment(
+        {
+            "CONCLAVE_REVIEWER_RUNTIME_MODE": "gemini",
+            "CONCLAVE_GOOGLE_API_KEY": "test-google-key",
+            "CONCLAVE_GOOGLE_BASE_URL": "https://google.test/v1beta",
+        }
+    )
+
+    assert settings.google_api_key == "test-google-key"
+    assert settings.google_base_url == "https://google.test/v1beta"
+    assert isinstance(build_reviewer_runtime(settings), ProviderRegistryRuntime)

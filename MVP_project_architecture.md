@@ -395,8 +395,8 @@ review(snapshot, role, round, prior_claims, prompt_version, schema_version)
     -> validated assessment + safe provider-attempt telemetry
 ```
 
-The runtime is selected explicitly as `fixture`, `openai`, `anthropic`, or
-`multi_provider`. Non-local
+The runtime is selected explicitly as `fixture`, `openai`, `anthropic`,
+`gemini`, or `multi_provider`. Non-local
 deployments cannot start with the fixture runtime, and provider names never
 fall back silently. The first production adapter uses OpenAI Responses for
 reviewers A, B, and C with `store=false`, no tools, strict JSON Schema output,
@@ -423,11 +423,24 @@ assessment while the recommendation category remained unchanged. This proves
 the provider rails and approved contracts, not permanent reviewer quality or
 panel value.
 
-The Google credential also passed a no-generation authentication check.
-A Gemini adapter is not implemented. It must use the same provider contract,
-context validation, telemetry, cost-limit, and no-silent-fallback boundaries
-before any Gemini review is accepted. Available model names are not permanent
-slot assignments; model selection follows adapter and output comparison tests.
+The Google adapter uses the current Gemini Interactions API with stable
+`gemini-3.6-flash`. It sends no tools, requests JSON that conforms to a
+provider-normalized version of the approved Conclave schema, disables provider
+storage, and maps Conclave reasoning policy to Gemini's `minimal`, `low`,
+`medium`, or `high` thinking levels. Unsupported JSON Schema constraints are
+removed only from the provider-facing schema; the complete Conclave Pydantic
+and task-pack contracts still validate every response. The adapter records
+request/response IDs, input, cached, output, thought and total tokens, latency,
+finish status, computed cost, and pricing version without retaining raw output
+or hidden reasoning.
+
+The Google credential first passed a no-generation model-list check. After
+separate approval for free-tier synthetic-data egress, one low-thinking
+A-only call passed on its first and only attempt: valid `assessment-v2`,
+2,268 ms latency, 1,911 total tokens, and $0 free-tier cost. The output was
+`observe`, adequate evidence, low risk, and 0.95 confidence. Available models
+and one-off outputs are not permanent slot assignments; slot selection remains
+deferred to outcome-linked evaluation.
 
 The Phase 4A live gate intentionally used the same OpenAI model in both slots
 to verify the common rail. This is not evidence of multi-model benefit.
