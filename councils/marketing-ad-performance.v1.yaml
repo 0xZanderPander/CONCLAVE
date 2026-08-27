@@ -1,0 +1,184 @@
+# Phase 9A expression spike — NOT WIRED TO ANYTHING.
+#
+# Revision 2 (2026-08-27). Rewritten against the clarified Conclave model:
+# a conclave is an inactive, input-triggered adversarial review body that
+# consumes a rigid input object and produces an output object. It is not a
+# task master and does not delegate work.
+#
+# Expresses the existing marketing ad-performance protocol (README section 6)
+# as configuration, to test whether it can be written as data at all.
+#
+# Markers:  [FITS] clean   [STRAIN] needs a new primitive   [BREAKS] needs a decision
+#
+# Findings: PHASE_9A_EXPRESSION_SPIKE.md. Do not implement from this file.
+
+conclave:
+  id: marketing-ad-performance
+  revision: 1
+
+  # STATIC: the conclave owns its instructions; inputs must conform to them.
+  # DYNAMIC: the input object carries instructions for a variable-shape run.
+  # See finding 9 — dynamic mode is an instruction-injection surface.
+  mode: static
+
+  # ---------------------------------------------------------------------------
+  # INPUT — rigid. The conclave is inactive until an input object arrives.
+  # ---------------------------------------------------------------------------
+  input:
+    contract: review-request.v1           # [FITS] already exists
+    on_receipt:
+      - validate_against_contract
+      - hash_and_snapshot                 # immutable, already built
+      - deduplicate_occurrence
+    reject_if_nonconforming: true         # static mode: no instruction override
+
+  # ---------------------------------------------------------------------------
+  # OUTPUT — every conclave aims at one output object.
+  # ---------------------------------------------------------------------------
+  output:
+    contract: review-result.v1            # [FITS] already exists
+    kind: findings_and_recommendation     # not a task plan
+
+  # ---------------------------------------------------------------------------
+  # SHARED INSTRUCTIONS — every seat receives these.
+  # The setting, the coordination rules, the common goal, and what done means.
+  # ---------------------------------------------------------------------------
+  shared_instructions:
+    - instructions/shared/setting.md            # what this conclave is, how seats coordinate
+    - instructions/shared/common-goal.md        # the shared objective
+    - instructions/shared/definition-of-done.md # [STRAIN] see finding 8
+
+  # ---------------------------------------------------------------------------
+  # SEATS — identity, model binding, private instructions, output contract.
+  # One seat = one role = one job description. A model API may staff more than
+  # one seat. C is split into two seats because it does two different jobs.
+  # ---------------------------------------------------------------------------
+  seats:
+    - id: A                                     # [STRAIN] slot is String(1) today
+      role: routine_reviewer
+      type: model
+      provider: openai
+      model: <configured>
+      instructions: instructions/seats/routine-reviewer.md
+      output_contract: assessment.v2
+      is_baseline: true                         # [FITS] panel value needs this named
+
+    - id: B
+      role: audit_reviewer
+      type: model
+      provider: anthropic
+      model: <configured>
+      instructions: instructions/seats/audit-reviewer.md
+      output_contract: assessment.v2
+
+    - id: C_ASSESS
+      role: independent_third_assessment
+      type: model
+      provider: openai
+      model: <configured>
+      instructions: instructions/seats/third-assessor.md
+      output_contract: assessment.v2
+
+    - id: C_JUDGE
+      role: adjudicator
+      type: model
+      provider: openai                          # same model API, different seat
+      model: <configured>
+      instructions: instructions/seats/adjudicator.md
+      output_contract: judgment.v1
+
+    - id: CMP
+      role: comparator
+      type: deterministic_checker               # enum already exists
+      implementation: task_pack.comparator
+      emits: routing_signal                     # [STRAIN] not an assessment
+
+  # ---------------------------------------------------------------------------
+  # ROUNDS — routing is scoped to a round, because the same pair of seats is
+  # isolated in one round and connected in another. See finding 1.
+  # ---------------------------------------------------------------------------
+  rounds:
+
+    - id: independent
+      execution: parallel
+      participants:
+        - seat: A
+          activation: always
+          hears_from: []                        # [FITS] THE MECHANISM
+          sends_to: [CMP]
+        - seat: B
+          activation:                           # [STRAIN] domain-coupled, finding 5
+            any_of: [cadence_due, request_material, recommendation_material,
+                     prior_goal_missed, audit_sample]
+          hears_from: []                        # blind to A. absence is the design.
+          sends_to: [CMP]
+
+    - id: compare
+      execution: sequential
+      participants:
+        - seat: CMP
+          hears_from: [A, B]
+          sends_to: []
+
+    - id: cross_review
+      execution: simultaneous                   # [BREAKS] a cycle, not a DAG. finding 2
+      max_rounds: 1                             # hard bound, always required
+      entry_when: disagreement_exceeds_tolerance
+      participants:
+        - seat: A
+          hears_from: [B]
+          sends_to: [B]
+        - seat: B
+          hears_from: [A]
+          sends_to: [A]
+
+    - id: third_assessment
+      execution: sequential
+      entry_when: disagreement_survives_cross_review
+      participants:
+        - seat: C_ASSESS
+          hears_from: []                        # blind here too
+          sends_to: []
+
+    - id: adjudication
+      execution: sequential
+      participants:
+        - seat: C_JUDGE
+          hears_from: [A, B, C_ASSESS]
+          sends_to: []
+
+  # ---------------------------------------------------------------------------
+  # TERMINATION
+  # ---------------------------------------------------------------------------
+  termination:
+    outcomes:
+      - id: auto_resolved
+        when:
+          all_of: [completed_A, recommendation_non_material, plan_allows_auto_resolve]
+        result_from: A                          # result seat is per-outcome, finding 7
+
+      - id: caller_decision_required
+        when:
+          any_of: [recommendation_material, disagreement_survived_adjudication]
+        result_from: C_JUDGE
+
+    guards:                                     # [STRAIN] new primitive, finding 4
+      - id: material_cannot_bypass_audit
+        forbid_outcome: auto_resolved
+        when: request_material
+        # An invariant, not a flow. Must be audited separately when it fires.
+
+    hard_bounds:                                # [STRAIN] finding 8
+      max_total_rounds: 6
+      max_spend: <configured>
+      # Required whenever definition-of-done is agent-judged rather than
+      # mechanically decided.
+
+  # ---------------------------------------------------------------------------
+  # FAILURE — currently hardcoded per reviewer. See finding 6.
+  # ---------------------------------------------------------------------------
+  failure:
+    seat_failure:
+      default: fail_closed
+    round_failure:
+      cross_review: operator_recovery           # Phase 4B human gate
