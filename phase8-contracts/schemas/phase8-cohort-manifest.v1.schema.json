@@ -1,0 +1,165 @@
+{
+  "$defs": {
+    "Phase8CohortCase": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline_hash": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baseline Hash"
+        },
+        "baseline_observe_or_no_change": {
+          "title": "Baseline Observe Or No Change",
+          "type": "boolean"
+        },
+        "case_id": {
+          "pattern": "^p8c_[a-f0-9]{16}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_kind": {
+          "enum": [
+            "provider_eligible",
+            "no_call_control"
+          ],
+          "title": "Case Kind",
+          "type": "string"
+        },
+        "case_package_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Case Package Hash",
+          "type": "string"
+        },
+        "control_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "stale_package",
+                "invalid_contract",
+                "duplicate_replay",
+                "unapproved_provider"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Control Type"
+        },
+        "evidence_version": {
+          "pattern": "^p8ev_[a-f0-9]{16}$",
+          "title": "Evidence Version",
+          "type": "string"
+        },
+        "materially_eligible": {
+          "title": "Materially Eligible",
+          "type": "boolean"
+        },
+        "outcome_hash": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outcome Hash"
+        },
+        "outcome_linked": {
+          "title": "Outcome Linked",
+          "type": "boolean"
+        },
+        "prior_reviewers_disagreed": {
+          "title": "Prior Reviewers Disagreed",
+          "type": "boolean"
+        },
+        "request_snapshot_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Request Snapshot Hash",
+          "type": "string"
+        },
+        "weak_partial_or_tracking_unhealthy": {
+          "title": "Weak Partial Or Tracking Unhealthy",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "case_id",
+        "evidence_version",
+        "case_kind",
+        "control_type",
+        "case_package_hash",
+        "request_snapshot_hash",
+        "outcome_linked",
+        "materially_eligible",
+        "weak_partial_or_tracking_unhealthy",
+        "prior_reviewers_disagreed",
+        "baseline_observe_or_no_change"
+      ],
+      "title": "Phase8CohortCase",
+      "type": "object"
+    }
+  },
+  "$id": "https://conclave.local/contracts/phase8/phase8-cohort-manifest.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/Phase8CohortCase"
+      },
+      "maxItems": 24,
+      "minItems": 24,
+      "title": "Cases",
+      "type": "array"
+    },
+    "cohort_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Cohort Hash",
+      "type": "string"
+    },
+    "cohort_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Cohort Id",
+      "type": "string"
+    },
+    "contract_version": {
+      "const": "phase8-cohort-manifest/v1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "frozen_at": {
+      "format": "date-time",
+      "title": "Frozen At",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "contract_version",
+    "cohort_id",
+    "revision",
+    "frozen_at",
+    "cases",
+    "cohort_hash"
+  ],
+  "title": "Phase8CohortManifest",
+  "type": "object"
+}

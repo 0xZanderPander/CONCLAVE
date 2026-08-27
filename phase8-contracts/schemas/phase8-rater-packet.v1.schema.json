@@ -1,0 +1,133 @@
+{
+  "$defs": {
+    "Phase8BlindCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "document": {
+          "additionalProperties": true,
+          "title": "Document",
+          "type": "object"
+        },
+        "document_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Document Hash",
+          "type": "string"
+        },
+        "label": {
+          "enum": [
+            "result_1",
+            "result_2"
+          ],
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "document_hash",
+        "document"
+      ],
+      "title": "Phase8BlindCandidate",
+      "type": "object"
+    },
+    "Phase8RaterItem": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/Phase8BlindCandidate"
+            },
+            {
+              "$ref": "#/$defs/Phase8BlindCandidate"
+            }
+          ],
+          "title": "Candidates",
+          "type": "array"
+        },
+        "case_id": {
+          "pattern": "^p8c_[a-f0-9]{16}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "item_id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Item Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_id",
+        "case_id",
+        "candidates"
+      ],
+      "title": "Phase8RaterItem",
+      "type": "object"
+    }
+  },
+  "$id": "https://conclave.local/contracts/phase8/phase8-rater-packet.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "blinding_key_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Blinding Key Hash",
+      "type": "string"
+    },
+    "cohort_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Cohort Hash",
+      "type": "string"
+    },
+    "contract_version": {
+      "const": "phase8-rater-packet/v1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/Phase8RaterItem"
+      },
+      "maxItems": 20,
+      "minItems": 1,
+      "title": "Items",
+      "type": "array"
+    },
+    "packet_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Packet Hash",
+      "type": "string"
+    },
+    "packet_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Packet Id",
+      "type": "string"
+    },
+    "randomized": {
+      "const": true,
+      "title": "Randomized",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "contract_version",
+    "packet_id",
+    "cohort_hash",
+    "created_at",
+    "randomized",
+    "blinding_key_hash",
+    "items",
+    "packet_hash"
+  ],
+  "title": "Phase8RaterPacket",
+  "type": "object"
+}

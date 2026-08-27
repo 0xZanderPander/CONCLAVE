@@ -1,0 +1,20 @@
+{
+  "contract_version": "review-feedback/v1",
+  "review_session_id": "rs_glm_giveaway_20260724_0800",
+  "evidence_version": "ev_2026-07-24T08:00Z_r1",
+  "decision_ref": "mktg_decision_9f2a1c",
+  "decision_summary": {
+    "disposition": "accepted",
+    "relationship_to_panel": "accepted_as_is",
+    "panel_preference": "not_comparable"
+  },
+  "action_ref": "mktg_manual_action_4b7e",
+  "outcome": {
+    "classification": "beneficial",
+    "outcome_ref": "mktg_outcome_c31d",
+    "action_executed": true,
+    "confounders": ["weekend traffic mix shift"],
+    "evidence_quality": "adequate",
+    "evaluated_at": "2026-07-26T08:00:00Z"
+  }
+}

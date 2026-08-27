@@ -1,0 +1,263 @@
+{
+  "profile": "marketing-ads/v1",
+  "defaults": {
+    "category": "collect_more_data",
+    "summary": "Collect more evidence.",
+    "claims": ["The current evidence does not justify a change."],
+    "actions": [],
+    "experiment": null,
+    "material": false,
+    "risk": "low",
+    "confidence": 0.8,
+    "evidence_quality": "adequate",
+    "expected_goal_impact": "uncertain",
+    "tracking_health": "healthy",
+    "optimization_eligible": true,
+    "primary_conversion": "eligible_giveaway_entry_completed",
+    "missing_evidence": [],
+    "review_after_hours": null
+  },
+  "cases": [
+    {
+      "id": "identical",
+      "left": {},
+      "right": {},
+      "expected_dimensions": {},
+      "expected_weighted_distance": 0.0,
+      "expected_hard_triggers": [],
+      "expected_cross_review": false
+    },
+    {
+      "id": "magnitude_only",
+      "left": {
+        "category": "operational_change",
+        "actions": [
+          {
+            "type": "budget_increase",
+            "target_id": "campaign",
+            "magnitude": 0.1,
+            "urgency": "normal",
+            "confidence": 0.9
+          }
+        ],
+        "material": true,
+        "risk": "medium",
+        "expected_goal_impact": "positive"
+      },
+      "right": {
+        "category": "operational_change",
+        "actions": [
+          {
+            "type": "budget_increase",
+            "target_id": "campaign",
+            "magnitude": 0.2,
+            "urgency": "normal",
+            "confidence": 0.7
+          }
+        ],
+        "material": true,
+        "risk": "medium",
+        "expected_goal_impact": "positive"
+      },
+      "expected_dimensions": { "magnitude_exposure": 0.5 },
+      "expected_weighted_distance": 0.04,
+      "expected_hard_triggers": [],
+      "expected_cross_review": false
+    },
+    {
+      "id": "change_vs_collect",
+      "left": {
+        "category": "operational_change",
+        "actions": [
+          {
+            "type": "pause_creative",
+            "target_id": "cr_b",
+            "magnitude": null,
+            "urgency": "normal",
+            "confidence": 0.8
+          }
+        ],
+        "material": true,
+        "risk": "medium",
+        "expected_goal_impact": "positive"
+      },
+      "right": {},
+      "expected_dimensions": {
+        "recommendation_disposition": 1.0,
+        "action_type_direction": 1.0,
+        "target_scope": 1.0,
+        "expected_goal_impact": 0.3333333333333333,
+        "magnitude_exposure": 1.0,
+        "risk_materiality": 1.0
+      },
+      "expected_weighted_distance": 0.77,
+      "expected_hard_triggers": [],
+      "expected_cross_review": true
+    },
+    {
+      "id": "opposite_direction",
+      "left": {
+        "category": "operational_change",
+        "actions": [
+          {
+            "type": "budget_increase",
+            "target_id": "campaign",
+            "magnitude": 0.1,
+            "urgency": "normal",
+            "confidence": 0.8
+          }
+        ],
+        "material": true,
+        "risk": "medium",
+        "expected_goal_impact": "positive"
+      },
+      "right": {
+        "category": "operational_change",
+        "actions": [
+          {
+            "type": "budget_decrease",
+            "target_id": "campaign",
+            "magnitude": 0.1,
+            "urgency": "normal",
+            "confidence": 0.8
+          }
+        ],
+        "material": true,
+        "risk": "medium",
+        "expected_goal_impact": "positive"
+      },
+      "expected_dimensions": {
+        "action_type_direction": 1.0,
+        "magnitude_exposure": 1.0
+      },
+      "expected_weighted_distance": 0.3,
+      "expected_hard_triggers": ["opposite_action_direction"],
+      "expected_cross_review": true
+    },
+    {
+      "id": "expected_goal_impact",
+      "left": { "expected_goal_impact": "neutral" },
+      "right": { "expected_goal_impact": "positive" },
+      "expected_dimensions": {
+        "expected_goal_impact": 0.6666666666666666
+      },
+      "expected_weighted_distance": 0.08,
+      "expected_hard_triggers": [],
+      "expected_cross_review": false
+    },
+    {
+      "id": "evidence_quality",
+      "left": { "evidence_quality": "strong" },
+      "right": { "evidence_quality": "insufficient" },
+      "expected_dimensions": {
+        "evidence_sufficiency_quality": 1.0
+      },
+      "expected_weighted_distance": 0.1,
+      "expected_hard_triggers": [],
+      "expected_cross_review": false
+    },
+    {
+      "id": "risk_materiality",
+      "left": {},
+      "right": { "risk": "high", "material": true },
+      "expected_dimensions": { "risk_materiality": 1.0 },
+      "expected_weighted_distance": 0.07,
+      "expected_hard_triggers": [],
+      "expected_cross_review": false
+    },
+    {
+      "id": "urgency_timing",
+      "left": {
+        "category": "operational_change",
+        "actions": [
+          {
+            "type": "budget_increase",
+            "target_id": "campaign",
+            "magnitude": 0.1,
+            "urgency": "low",
+            "confidence": 0.8
+          }
+        ],
+        "material": true,
+        "risk": "medium",
+        "expected_goal_impact": "positive"
+      },
+      "right": {
+        "category": "operational_change",
+        "actions": [
+          {
+            "type": "budget_increase",
+            "target_id": "campaign",
+            "magnitude": 0.1,
+            "urgency": "high",
+            "confidence": 0.8
+          }
+        ],
+        "material": true,
+        "risk": "medium",
+        "expected_goal_impact": "positive"
+      },
+      "expected_dimensions": { "urgency_timing": 1.0 },
+      "expected_weighted_distance": 0.05,
+      "expected_hard_triggers": [],
+      "expected_cross_review": false,
+      "expected_merged_urgency": "high"
+    },
+    {
+      "id": "incompatible_target_scope",
+      "left": {
+        "category": "operational_change",
+        "actions": [
+          {
+            "type": "pause_creative",
+            "target_id": "cr_a",
+            "magnitude": null,
+            "urgency": "normal",
+            "confidence": 0.8
+          }
+        ],
+        "material": true,
+        "risk": "medium",
+        "expected_goal_impact": "positive"
+      },
+      "right": {
+        "category": "operational_change",
+        "actions": [
+          {
+            "type": "pause_creative",
+            "target_id": "cr_b",
+            "magnitude": null,
+            "urgency": "normal",
+            "confidence": 0.8
+          }
+        ],
+        "material": true,
+        "risk": "medium",
+        "expected_goal_impact": "positive"
+      },
+      "expected_dimensions": {
+        "action_type_direction": 1.0,
+        "target_scope": 1.0,
+        "magnitude_exposure": 1.0
+      },
+      "expected_weighted_distance": 0.44,
+      "expected_hard_triggers": ["incompatible_target_scope"],
+      "expected_cross_review": true
+    },
+    {
+      "id": "tracking_and_eligibility_conflict",
+      "left": {},
+      "right": {
+        "tracking_health": "unhealthy",
+        "optimization_eligible": false
+      },
+      "expected_dimensions": {},
+      "expected_weighted_distance": 0.0,
+      "expected_hard_triggers": [
+        "tracking_health_conflict",
+        "evidence_eligibility_conflict"
+      ],
+      "expected_cross_review": true
+    }
+  ]
+}

@@ -1,0 +1,279 @@
+{
+  "$defs": {
+    "Phase8CaseResult": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_count": {
+          "minimum": 0,
+          "title": "Attempt Count",
+          "type": "integer"
+        },
+        "caller_decision_required_marked": {
+          "title": "Caller Decision Required Marked",
+          "type": "boolean"
+        },
+        "case_id": {
+          "pattern": "^p8c_[a-f0-9]{16}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "computed_cost_usd": {
+          "minimum": 0,
+          "title": "Computed Cost Usd",
+          "type": "number"
+        },
+        "critical_defect_count": {
+          "minimum": 0,
+          "title": "Critical Defect Count",
+          "type": "integer"
+        },
+        "provider_call_count": {
+          "minimum": 0,
+          "title": "Provider Call Count",
+          "type": "integer"
+        },
+        "provider_eligible": {
+          "title": "Provider Eligible",
+          "type": "boolean"
+        },
+        "route": {
+          "anyOf": [
+            {
+              "enum": [
+                "a_only",
+                "ab_agreement",
+                "cross_review_resolved",
+                "c_tie_broken"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Route"
+        },
+        "stop_reason": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stop Reason"
+        },
+        "total_latency_ms": {
+          "minimum": 0,
+          "title": "Total Latency Ms",
+          "type": "integer"
+        },
+        "total_tokens": {
+          "minimum": 0,
+          "title": "Total Tokens",
+          "type": "integer"
+        },
+        "valid_audited_result": {
+          "title": "Valid Audited Result",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "case_id",
+        "provider_eligible",
+        "provider_call_count",
+        "valid_audited_result",
+        "route",
+        "caller_decision_required_marked",
+        "critical_defect_count",
+        "attempt_count",
+        "total_tokens",
+        "total_latency_ms",
+        "computed_cost_usd"
+      ],
+      "title": "Phase8CaseResult",
+      "type": "object"
+    },
+    "Phase8MetricOutcome": {
+      "additionalProperties": false,
+      "properties": {
+        "denominator": {
+          "exclusiveMinimum": 0,
+          "title": "Denominator",
+          "type": "number"
+        },
+        "metric": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Metric",
+          "type": "string"
+        },
+        "numerator": {
+          "minimum": 0,
+          "title": "Numerator",
+          "type": "number"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "threshold": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Threshold",
+          "type": "string"
+        },
+        "value": {
+          "minimum": 0,
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "metric",
+        "numerator",
+        "denominator",
+        "value",
+        "threshold",
+        "passed"
+      ],
+      "title": "Phase8MetricOutcome",
+      "type": "object"
+    }
+  },
+  "$id": "https://conclave.local/contracts/phase8/phase8-pilot-report.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "access_manifest_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Access Manifest Hash",
+      "type": "string"
+    },
+    "case_results": {
+      "items": {
+        "$ref": "#/$defs/Phase8CaseResult"
+      },
+      "maxItems": 24,
+      "title": "Case Results",
+      "type": "array"
+    },
+    "cohort_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Cohort Hash",
+      "type": "string"
+    },
+    "cohort_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Cohort Id",
+      "type": "string"
+    },
+    "contract_version": {
+      "const": "phase8-pilot-report/v1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "decision_rationale": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Decision Rationale",
+      "type": "string"
+    },
+    "exit_decision": {
+      "enum": [
+        "not_yet_eligible",
+        "proceed_to_larger_shadow_pilot",
+        "revise_and_repeat",
+        "stop"
+      ],
+      "title": "Exit Decision",
+      "type": "string"
+    },
+    "gate_0_report_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Gate 0 Report Hash",
+      "type": "string"
+    },
+    "gate_1_approval_hash": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Gate 1 Approval Hash"
+    },
+    "gate_2_approval_hash": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Gate 2 Approval Hash"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "hard_guardrail_violations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Hard Guardrail Violations",
+      "type": "array"
+    },
+    "metrics": {
+      "items": {
+        "$ref": "#/$defs/Phase8MetricOutcome"
+      },
+      "title": "Metrics",
+      "type": "array"
+    },
+    "report_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Report Hash",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "gate_0_only",
+        "canary_complete",
+        "pilot_complete",
+        "stopped"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract_version",
+    "cohort_id",
+    "cohort_hash",
+    "access_manifest_hash",
+    "gate_0_report_hash",
+    "generated_at",
+    "status",
+    "case_results",
+    "metrics",
+    "hard_guardrail_violations",
+    "exit_decision",
+    "decision_rationale",
+    "report_hash"
+  ],
+  "title": "Phase8PilotReport",
+  "type": "object"
+}

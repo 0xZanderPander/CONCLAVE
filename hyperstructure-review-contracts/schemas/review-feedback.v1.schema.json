@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hyperstructure/contracts/review-feedback.v1.schema.json",
+  "title": "review-feedback/v1",
+  "description": "Sample fixture, or a future optional caller, -> Conclave. Opaque references only. Lets Conclave evaluate reviewer performance without ever owning caller decisions, outcomes, or learning.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "review_session_id",
+    "evidence_version",
+    "decision_ref",
+    "decision_summary",
+    "outcome"
+  ],
+  "properties": {
+    "contract_version": { "const": "review-feedback/v1" },
+    "review_session_id": { "type": "string" },
+    "evidence_version": { "type": "string" },
+    "decision_ref": {
+      "type": "string",
+      "description": "Opaque handle to the caller's authoritative decision record. Conclave cannot resolve it."
+    },
+    "decision_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disposition", "relationship_to_panel", "panel_preference"],
+      "properties": {
+        "disposition": {
+          "enum": ["accepted", "rejected", "modified", "deferred", "frozen", "no_action"]
+        },
+        "relationship_to_panel": {
+          "enum": ["accepted_as_is", "accepted_with_changes", "rejected", "not_applicable"]
+        },
+        "panel_preference": {
+          "enum": ["preferred_panel", "preferred_baseline", "neither", "not_comparable"]
+        }
+      }
+    },
+    "action_ref": {
+      "type": ["string", "null"],
+      "description": "Opaque handle to the manual action or execution record."
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["classification", "action_executed"],
+      "properties": {
+        "classification": {
+          "enum": ["beneficial", "harmful", "no_effect", "mixed", "inconclusive"]
+        },
+        "outcome_ref": { "type": ["string", "null"] },
+        "action_executed": { "type": "boolean" },
+        "confounders": { "type": "array", "items": { "type": "string" } },
+        "evidence_quality": { "enum": ["strong", "adequate", "weak", "insufficient"] },
+        "evaluated_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

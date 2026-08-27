@@ -1,0 +1,34 @@
+{
+  "plan_id": "rp_meta_giveaway",
+  "deployment_id": "dep_meta_glm_giveaway_a",
+  "revisions": [
+    {
+      "revision": 3,
+      "effective_at": "2026-07-10T00:00:00Z",
+      "timezone": "America/Los_Angeles",
+      "slots": {
+        "A": { "cadence": "PT6H", "anchor_at": "2026-07-10T00:00:00Z" },
+        "B": { "cadence": "PT24H", "anchor_at": "2026-07-10T00:00:00Z" },
+        "C": { "cadence": "event_only" }
+      },
+      "cross_review_rounds": 1
+    },
+    {
+      "revision": 4,
+      "effective_at": "2026-07-18T00:00:00Z",
+      "timezone": "America/Los_Angeles",
+      "slots": {
+        "A": { "cadence": "PT4H", "anchor_at": "2026-07-18T00:00:00Z" },
+        "B": { "cadence": "PT16H", "anchor_at": "2026-07-18T00:00:00Z" },
+        "C": { "cadence": "event_only" }
+      },
+      "cross_review_rounds": 1
+    }
+  ],
+  "expected": {
+    "open_session_plan_revision": 3,
+    "future_session_plan_revision": 4,
+    "rollback_requires_new_revision": true,
+    "triggered_b_moves_next_scheduled_b": false
+  }
+}

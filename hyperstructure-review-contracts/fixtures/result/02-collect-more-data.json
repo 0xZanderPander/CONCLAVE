@@ -1,0 +1,66 @@
+{
+  "contract_version": "review-result/v1",
+  "review_session_id": "rs_glm_giveaway_20260719_0800",
+  "request_idempotency_key": "review_bc_glm_giveaway_2026_07_dep_a_2026-07-19T08:00Z",
+  "occurrence_id": "occ_rp_meta_giveaway_r4_20260719T0800Z",
+  "task_pack_ref": "marketing-ads/v1",
+  "task_pack_hash": null,
+  "review_plan_ref": "rp_meta_giveaway",
+  "review_plan_revision": 4,
+  "request_snapshot_hash": "sha256:PLACEHOLDER_matches_request_02",
+  "evidence_version": "ev_2026-07-19T08:00Z_r1",
+  "status": "auto_resolved",
+  "recommendation": {
+    "category": "collect_more_data",
+    "summary": "Only 6 conversions over 1 day. Insufficient to act. Continue within existing limits and re-review.",
+    "actions": [],
+    "experiment": null
+  },
+  "claims": [
+    {
+      "statement": "6 primary conversions is below the materiality floor for any spend change.",
+      "evidence_references": ["sections.evidence.metrics", "materiality.min_impressions"],
+      "alternative_explanations": []
+    }
+  ],
+  "disagreement": {
+    "level": "none",
+    "summary": "A and B both recommend collect_more_data.",
+    "distance": 0.0,
+    "tolerance": 0.25,
+    "triggered_by": ["scheduled_b"],
+    "hard_triggers": [],
+    "agreements": ["insufficient evidence", "no change"],
+    "disagreements": []
+  },
+  "comparison_history": [
+    {
+      "stage": "independent",
+      "round": 1,
+      "distance": 0.0,
+      "weighted_distance": 0.0,
+      "tolerance": 0.25,
+      "dimension_distances": {},
+      "hard_triggers": [],
+      "merge_compatible": true,
+      "requires_cross_review": false,
+      "agreements": ["insufficient evidence", "no change"],
+      "disagreements": []
+    }
+  ],
+  "resolution": { "basis": "within_tolerance", "decisive_stage": "independent" },
+  "baseline": { "category": "collect_more_data", "changed_by_panel": false },
+  "confidence": 0.71,
+  "evidence_quality": "insufficient",
+  "missing_evidence": ["at least 7 days of data", "minimum 50 conversions"],
+  "risk": "low",
+  "review_after_hours": 24,
+  "panel_metadata": {
+    "comparator_profile": "marketing-ads/v1",
+    "reviewers": [
+      { "slot": "A", "reviewer_type": "model", "stage": "independent", "round": 1, "provider": "nous-portal", "model": "hermes-4", "prompt_version": "adpack-p1", "schema_version": "result-v1", "tokens": 1400, "latency_ms": 3300, "cost_usd": 0.007 },
+      { "slot": "B", "reviewer_type": "model", "stage": "independent", "round": 1, "provider": "openrouter", "model": "claude-sonnet-5", "prompt_version": "adpack-p1", "schema_version": "result-v1", "tokens": 1510, "latency_ms": 4000, "cost_usd": 0.012 }
+    ],
+    "tie_breaker": null
+  }
+}

@@ -1,0 +1,132 @@
+{
+  "$defs": {
+    "Phase8RedactionChecklist": {
+      "additionalProperties": false,
+      "properties": {
+        "business_identifiers_opaque": {
+          "const": true,
+          "title": "Business Identifiers Opaque",
+          "type": "boolean"
+        },
+        "credentials_and_tokens_removed": {
+          "const": true,
+          "title": "Credentials And Tokens Removed",
+          "type": "boolean"
+        },
+        "customer_identifiers_removed": {
+          "const": true,
+          "title": "Customer Identifiers Removed",
+          "type": "boolean"
+        },
+        "direct_contact_details_removed": {
+          "const": true,
+          "title": "Direct Contact Details Removed",
+          "type": "boolean"
+        },
+        "personal_data_removed": {
+          "const": true,
+          "title": "Personal Data Removed",
+          "type": "boolean"
+        },
+        "raw_message_content_removed": {
+          "const": true,
+          "title": "Raw Message Content Removed",
+          "type": "boolean"
+        },
+        "redaction_map_stored_outside_conclave": {
+          "const": true,
+          "title": "Redaction Map Stored Outside Conclave",
+          "type": "boolean"
+        },
+        "sensitive_values_normalized_when_exact_values_unneeded": {
+          "const": true,
+          "title": "Sensitive Values Normalized When Exact Values Unneeded",
+          "type": "boolean"
+        },
+        "timestamps_shifted_when_exact_dates_unneeded": {
+          "const": true,
+          "title": "Timestamps Shifted When Exact Dates Unneeded",
+          "type": "boolean"
+        },
+        "unnecessary_free_text_removed": {
+          "const": true,
+          "title": "Unnecessary Free Text Removed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "personal_data_removed",
+        "credentials_and_tokens_removed",
+        "direct_contact_details_removed",
+        "customer_identifiers_removed",
+        "raw_message_content_removed",
+        "unnecessary_free_text_removed",
+        "business_identifiers_opaque",
+        "timestamps_shifted_when_exact_dates_unneeded",
+        "sensitive_values_normalized_when_exact_values_unneeded",
+        "redaction_map_stored_outside_conclave"
+      ],
+      "title": "Phase8RedactionChecklist",
+      "type": "object"
+    }
+  },
+  "$id": "https://conclave.local/contracts/phase8/phase8-redaction-attestation.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "attestation_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Attestation Hash",
+      "type": "string"
+    },
+    "attestation_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Attestation Id",
+      "type": "string"
+    },
+    "case_id": {
+      "pattern": "^p8c_[a-f0-9]{16}$",
+      "title": "Case Id",
+      "type": "string"
+    },
+    "checklist": {
+      "$ref": "#/$defs/Phase8RedactionChecklist"
+    },
+    "contract_version": {
+      "const": "phase8-redaction-attestation/v1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "reviewed_at": {
+      "format": "date-time",
+      "title": "Reviewed At",
+      "type": "string"
+    },
+    "reviewer_ids": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "title": "Reviewer Ids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "contract_version",
+    "attestation_id",
+    "case_id",
+    "reviewed_at",
+    "reviewer_ids",
+    "checklist",
+    "attestation_hash"
+  ],
+  "title": "Phase8RedactionAttestation",
+  "type": "object"
+}

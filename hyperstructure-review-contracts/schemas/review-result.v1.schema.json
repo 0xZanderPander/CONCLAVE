@@ -1,0 +1,336 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hyperstructure/contracts/review-result.v1.schema.json",
+  "title": "review-result/v1",
+  "description": "Conclave -> local test sink, or a future optional caller. One structured result per review run. Contains no instruction that bypasses caller policy and carries no platform action authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "recommendation": {
+            "properties": {
+              "category": { "const": "experiment" }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "recommendation": {
+            "properties": {
+              "experiment": { "type": "object" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "disagreement": {
+            "properties": {
+              "level": { "const": "tie_broken" }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "status": { "const": "caller_decision_required" },
+          "panel_metadata": {
+            "properties": {
+              "tie_breaker": { "type": "object" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "required": [
+    "contract_version",
+    "review_session_id",
+    "request_idempotency_key",
+    "occurrence_id",
+    "task_pack_ref",
+    "task_pack_hash",
+    "review_plan_ref",
+    "review_plan_revision",
+    "request_snapshot_hash",
+    "evidence_version",
+    "status",
+    "recommendation",
+    "claims",
+    "disagreement",
+    "comparison_history",
+    "resolution",
+    "baseline",
+    "confidence",
+    "evidence_quality",
+    "panel_metadata"
+  ],
+  "properties": {
+    "contract_version": { "const": "review-result/v1" },
+    "review_session_id": { "type": "string" },
+    "request_idempotency_key": { "type": "string" },
+    "occurrence_id": { "type": "string" },
+    "task_pack_ref": { "type": "string" },
+    "task_pack_hash": { "type": ["string", "null"] },
+    "review_plan_ref": { "type": "string" },
+    "review_plan_revision": { "type": "integer", "minimum": 1 },
+    "request_snapshot_hash": {
+      "type": "string",
+      "description": "Ties the result to the exact immutable request the caller submitted."
+    },
+    "evidence_version": { "type": "string" },
+    "status": {
+      "enum": [
+        "auto_resolved",
+        "caller_decision_required",
+        "stale_or_ineligible_evidence",
+        "failed"
+      ]
+    },
+    "recommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "summary", "actions", "experiment"],
+      "properties": {
+        "category": {
+          "enum": [
+            "observe", "collect_more_data", "experiment", "operational_change",
+            "tracking_or_data_problem", "freeze"
+          ]
+        },
+        "summary": { "type": "string" },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "target_id"],
+            "properties": {
+              "type": { "type": "string" },
+              "target_id": { "type": "string" },
+              "magnitude": { "type": ["number", "null"] },
+              "urgency": { "enum": ["low", "normal", "high"] },
+              "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "experiment": {
+          "type": ["object", "null"],
+          "description": "Required when category is experiment.",
+          "additionalProperties": false,
+          "required": [
+            "hypothesis",
+            "control",
+            "isolated_change",
+            "success_metric",
+            "minimum_evidence",
+            "exposure_limit",
+            "stop_conditions",
+            "review_after_hours"
+          ],
+          "properties": {
+            "hypothesis": { "type": "string" },
+            "control": { "type": "string" },
+            "isolated_change": { "type": "string" },
+            "success_metric": { "type": "string" },
+            "minimum_evidence": { "type": "string" },
+            "exposure_limit": { "type": "string" },
+            "stop_conditions": { "type": "array", "items": { "type": "string" } },
+            "review_after_hours": { "type": "number" }
+          }
+        }
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["statement", "evidence_references"],
+        "properties": {
+          "statement": { "type": "string" },
+          "evidence_references": { "type": "array", "items": { "type": "string" } },
+          "alternative_explanations": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "disagreement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "summary", "distance", "tolerance", "triggered_by", "hard_triggers"],
+      "properties": {
+        "level": { "enum": ["none", "within_tolerance", "cross_reviewed", "tie_broken"] },
+        "summary": { "type": "string" },
+        "distance": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "tolerance": { "type": "number", "minimum": 0, "maximum": 1 },
+        "triggered_by": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "scheduled_a",
+              "scheduled_b",
+              "material_a",
+              "request_material",
+              "recommendation_material_a",
+              "failed_goal",
+              "audit_sample",
+              "hard_conflict",
+              "weighted_distance",
+              "merge_incompatible"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "hard_triggers": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "agreements": { "type": "array", "items": { "type": "string" } },
+        "disagreements": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "comparison_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stage",
+          "round",
+          "distance",
+          "weighted_distance",
+          "tolerance",
+          "dimension_distances",
+          "hard_triggers",
+          "merge_compatible",
+          "requires_cross_review",
+          "agreements",
+          "disagreements"
+        ],
+        "properties": {
+          "stage": { "enum": ["independent", "cross_review"] },
+          "round": { "type": "integer", "minimum": 1 },
+          "distance": { "type": "number", "minimum": 0, "maximum": 1 },
+          "weighted_distance": { "type": "number", "minimum": 0, "maximum": 1 },
+          "tolerance": { "type": "number", "minimum": 0, "maximum": 1 },
+          "dimension_distances": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "hard_triggers": {
+            "type": "array",
+            "items": { "type": "string" },
+            "uniqueItems": true
+          },
+          "merge_compatible": { "type": "boolean" },
+          "requires_cross_review": { "type": "boolean" },
+          "agreements": { "type": "array", "items": { "type": "string" } },
+          "disagreements": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "resolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis", "decisive_stage"],
+      "properties": {
+        "basis": {
+          "enum": [
+            "a_only",
+            "within_tolerance",
+            "cross_review_converged",
+            "c_select_a",
+            "c_select_b",
+            "c_synthesize",
+            "c_insufficient_evidence",
+            "c_escalate",
+            "c_judgment"
+          ]
+        },
+        "decisive_stage": { "enum": ["independent", "cross_review"] }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "description": "Reviewer A alone, recorded before comparison. The panel is evaluated against this.",
+      "additionalProperties": false,
+      "required": ["category"],
+      "properties": {
+        "category": { "type": "string" },
+        "changed_by_panel": { "type": "boolean" }
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Reviewer strength of belief. NOT a claim about data quality."
+    },
+    "evidence_quality": {
+      "enum": ["strong", "adequate", "weak", "insufficient"],
+      "description": "Reviewer reading of input sufficiency. Kept separate from confidence."
+    },
+    "missing_evidence": { "type": "array", "items": { "type": "string" } },
+    "risk": { "enum": ["low", "medium", "high"] },
+    "review_after_hours": { "type": ["number", "null"] },
+    "panel_metadata": {
+      "type": "object",
+      "description": "Auditability: who reviewed, with what prompt/schema, at what cost. No private chain-of-thought.",
+      "additionalProperties": false,
+      "required": ["comparator_profile", "reviewers", "tie_breaker"],
+      "properties": {
+        "comparator_profile": { "type": "string" },
+        "routing_mode": { "enum": ["fixture", "automatic"] },
+        "reviewers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["slot", "reviewer_type", "stage", "round", "prompt_version", "schema_version"],
+            "properties": {
+              "slot": { "enum": ["A", "B", "C"] },
+              "reviewer_type": { "enum": ["model", "deterministic_checker", "human"] },
+              "stage": { "enum": ["independent", "cross_review", "judging"] },
+              "round": { "type": "integer", "minimum": 1 },
+              "provider": { "type": ["string", "null"] },
+              "model": { "type": ["string", "null"] },
+              "prompt_version": { "type": "string" },
+              "schema_version": { "type": "string" },
+              "attempt_count": { "type": "integer", "minimum": 1 },
+              "provider_request_id": { "type": ["string", "null"] },
+              "provider_response_id": { "type": ["string", "null"] },
+              "tokens": { "type": "number" },
+              "input_tokens": { "type": "number" },
+              "output_tokens": { "type": "number" },
+              "reasoning_tokens": { "type": "number" },
+              "latency_ms": { "type": "number" },
+              "cost_usd": { "type": "number" },
+              "finish_status": { "type": ["string", "null"] },
+              "pricing_version": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "tie_breaker": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["verdict", "confidence", "evidence_quality"],
+          "properties": {
+            "verdict": {
+              "enum": ["select_a", "select_b", "synthesize", "insufficient_evidence", "escalate"]
+            },
+            "selected_slot": { "enum": ["A", "B", null] },
+            "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+            "evidence_quality": { "enum": ["strong", "adequate", "weak", "insufficient"] },
+            "unresolved_claims": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}

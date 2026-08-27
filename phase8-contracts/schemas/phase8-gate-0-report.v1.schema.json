@@ -1,0 +1,292 @@
+{
+  "$defs": {
+    "Phase8Gate0Checks": {
+      "additionalProperties": false,
+      "properties": {
+        "all_case_packages_validated": {
+          "const": true,
+          "title": "All Case Packages Validated",
+          "type": "boolean"
+        },
+        "all_no_call_controls_predicted_to_stop": {
+          "const": true,
+          "title": "All No Call Controls Predicted To Stop",
+          "type": "boolean"
+        },
+        "approval_and_case_allowlist_required_before_provider_construction": {
+          "const": true,
+          "title": "Approval And Case Allowlist Required Before Provider Construction",
+          "type": "boolean"
+        },
+        "approval_record_shape_validated": {
+          "const": true,
+          "title": "Approval Record Shape Validated",
+          "type": "boolean"
+        },
+        "audit_idempotency_and_evaluation_dry_run_passed": {
+          "const": true,
+          "title": "Audit Idempotency And Evaluation Dry Run Passed",
+          "type": "boolean"
+        },
+        "case_baseline_and_cohort_hashes_frozen": {
+          "const": true,
+          "title": "Case Baseline And Cohort Hashes Frozen",
+          "type": "boolean"
+        },
+        "plan_and_provider_access_manifest_frozen": {
+          "const": true,
+          "title": "Plan And Provider Access Manifest Frozen",
+          "type": "boolean"
+        },
+        "route_batch_phase_and_wall_time_guards_passed": {
+          "const": true,
+          "title": "Route Batch Phase And Wall Time Guards Passed",
+          "type": "boolean"
+        },
+        "two_person_redaction_review_complete": {
+          "const": true,
+          "title": "Two Person Redaction Review Complete",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "all_case_packages_validated",
+        "case_baseline_and_cohort_hashes_frozen",
+        "two_person_redaction_review_complete",
+        "plan_and_provider_access_manifest_frozen",
+        "route_batch_phase_and_wall_time_guards_passed",
+        "approval_and_case_allowlist_required_before_provider_construction",
+        "all_no_call_controls_predicted_to_stop",
+        "audit_idempotency_and_evaluation_dry_run_passed",
+        "approval_record_shape_validated"
+      ],
+      "title": "Phase8Gate0Checks",
+      "type": "object"
+    },
+    "Phase8Gate0Coverage": {
+      "additionalProperties": false,
+      "properties": {
+        "historical_replay_cases": {
+          "maximum": 24,
+          "minimum": 0,
+          "title": "Historical Replay Cases",
+          "type": "integer"
+        },
+        "materially_eligible_cases": {
+          "maximum": 20,
+          "minimum": 6,
+          "title": "Materially Eligible Cases",
+          "type": "integer"
+        },
+        "no_call_controls": {
+          "const": 4,
+          "title": "No Call Controls",
+          "type": "integer"
+        },
+        "observe_or_no_change_baselines": {
+          "maximum": 20,
+          "minimum": 4,
+          "title": "Observe Or No Change Baselines",
+          "type": "integer"
+        },
+        "outcome_linked_cases": {
+          "maximum": 20,
+          "minimum": 12,
+          "title": "Outcome Linked Cases",
+          "type": "integer"
+        },
+        "prior_disagreement_cases": {
+          "maximum": 20,
+          "minimum": 4,
+          "title": "Prior Disagreement Cases",
+          "type": "integer"
+        },
+        "provider_eligible_cases": {
+          "const": 20,
+          "title": "Provider Eligible Cases",
+          "type": "integer"
+        },
+        "real_event_cases": {
+          "maximum": 24,
+          "minimum": 0,
+          "title": "Real Event Cases",
+          "type": "integer"
+        },
+        "total_cases": {
+          "const": 24,
+          "title": "Total Cases",
+          "type": "integer"
+        },
+        "weak_partial_or_tracking_unhealthy_cases": {
+          "maximum": 20,
+          "minimum": 6,
+          "title": "Weak Partial Or Tracking Unhealthy Cases",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_cases",
+        "provider_eligible_cases",
+        "no_call_controls",
+        "real_event_cases",
+        "historical_replay_cases",
+        "outcome_linked_cases",
+        "materially_eligible_cases",
+        "weak_partial_or_tracking_unhealthy_cases",
+        "prior_disagreement_cases",
+        "observe_or_no_change_baselines"
+      ],
+      "title": "Phase8Gate0Coverage",
+      "type": "object"
+    },
+    "Phase8Gate0EvidenceItem": {
+      "additionalProperties": false,
+      "properties": {
+        "check_id": {
+          "enum": [
+            "all_case_packages_validated",
+            "case_baseline_and_cohort_hashes_frozen",
+            "two_person_redaction_review_complete",
+            "plan_and_provider_access_manifest_frozen",
+            "route_batch_phase_and_wall_time_guards_passed",
+            "approval_and_case_allowlist_required_before_provider_construction",
+            "all_no_call_controls_predicted_to_stop",
+            "audit_idempotency_and_evaluation_dry_run_passed",
+            "approval_record_shape_validated"
+          ],
+          "title": "Check Id",
+          "type": "string"
+        },
+        "details": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Details",
+          "type": "array"
+        },
+        "evidence_hashes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Hashes",
+          "type": "array"
+        },
+        "passed": {
+          "const": true,
+          "title": "Passed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "check_id",
+        "passed",
+        "details"
+      ],
+      "title": "Phase8Gate0EvidenceItem",
+      "type": "object"
+    }
+  },
+  "$id": "https://conclave.local/contracts/phase8/phase8-gate-0-report.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "access_manifest_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Access Manifest Hash",
+      "type": "string"
+    },
+    "access_manifest_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Access Manifest Id",
+      "type": "string"
+    },
+    "checks": {
+      "$ref": "#/$defs/Phase8Gate0Checks"
+    },
+    "cohort_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Cohort Hash",
+      "type": "string"
+    },
+    "cohort_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Cohort Id",
+      "type": "string"
+    },
+    "contract_version": {
+      "const": "phase8-gate-0-report/v1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "coverage": {
+      "$ref": "#/$defs/Phase8Gate0Coverage"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/Phase8Gate0EvidenceItem"
+      },
+      "maxItems": 9,
+      "minItems": 9,
+      "title": "Evidence",
+      "type": "array"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "passed": {
+      "const": true,
+      "title": "Passed",
+      "type": "boolean"
+    },
+    "provider_attempt_count": {
+      "const": 0,
+      "title": "Provider Attempt Count",
+      "type": "integer"
+    },
+    "provider_credentials_loaded": {
+      "const": false,
+      "title": "Provider Credentials Loaded",
+      "type": "boolean"
+    },
+    "provider_spend_usd": {
+      "const": 0.0,
+      "title": "Provider Spend Usd",
+      "type": "number"
+    },
+    "report_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Report Hash",
+      "type": "string"
+    },
+    "runner_version": {
+      "const": "phase8-runner/v1",
+      "title": "Runner Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract_version",
+    "cohort_id",
+    "cohort_hash",
+    "access_manifest_id",
+    "access_manifest_hash",
+    "runner_version",
+    "generated_at",
+    "checks",
+    "coverage",
+    "evidence",
+    "provider_attempt_count",
+    "provider_spend_usd",
+    "provider_credentials_loaded",
+    "passed",
+    "report_hash"
+  ],
+  "title": "Phase8Gate0Report",
+  "type": "object"
+}
