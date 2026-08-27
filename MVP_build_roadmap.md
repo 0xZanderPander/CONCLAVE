@@ -18,7 +18,94 @@ for deterministic protocol regression tests.
 
 Marketing OS is built separately and does not depend on Conclave.
 
+As of 2026-08-27 this roadmap runs two parallel tracks. See **Current
+Sequencing** immediately below.
+
 Progress is controlled by acceptance gates rather than dates.
+
+## Current Sequencing
+
+Updated 2026-08-27. This section supersedes any conflicting ordering elsewhere
+in this document.
+
+Two tracks now run in parallel. They are deliberately decoupled.
+
+**Track 1 — Marketing pilot (Phase 8).** Unchanged in scope and unchanged in its
+authorization gates. Phase 8 remains defined, unauthorized, and disabled, and is
+blocked only on owner-supplied cohort material. It is close to test-ready and
+must not be delayed or destabilized by Track 2.
+
+**Track 2 — Composability (Phase 9).** Generalizes the fixed three-seat protocol
+into stored Council configuration. It proceeds against the existing 34-case
+deterministic fixture suite as a conformance oracle and does not require Phase 8
+material.
+
+The tracks are decoupled because the fixture suite proves marketing behavior is
+unchanged without needing pilot data. Track 2 must never modify a Phase 7
+fixture to make a refactor pass; a fixture that must change is a design finding
+requiring an explicit decision.
+
+Product direction is authoritative on the Notion CONCLAVE page. Vocabulary and
+the Notion-to-code mapping are in `GLOSSARY.md`. Agent working rules are in
+`AGENTS.md`.
+
+## Phase 9: Council Composability
+
+**Goal: seats, edges, activation and termination become data, with marketing
+behavior provably unchanged.**
+
+### 9A: Expression spike — no code changes
+
+Write the marketing protocol out as a Council configuration file without wiring
+it to anything. The purpose is to establish whether the protocol can be
+expressed as data at all.
+
+The real question is whether **blind isolation survives being expressed as a
+configuration**. Reviewer A and Reviewer B are independent in round one because
+no edge exists between them. A configuration format that cannot represent an
+absent edge cannot represent the mechanism that already works.
+
+Whatever does not fit is the actual design finding. Do not proceed to 9B until
+9A has produced either a complete expression or an explicit list of what
+resisted expression.
+
+### 9B: Seat generalization
+
+`reviewer_slots` is already a versioned seat record carrying reviewer type,
+provider, model, role version and prompt version, pinned to a plan revision.
+The blockers are narrow:
+
+- `slot` is `String(1)` constrained to A/B/C
+- `ReviewerSlot` is a literal A/B/C enum
+- `ReviewState` enumerates a state per reviewer rather than per stage
+
+`ReviewStage` is already the general form. A state should become a
+`(stage, seat_id)` pair rather than a flat per-seat enum member.
+
+The marketing configuration must keep using A/B/C as its seat names so existing
+fixtures and audit records remain readable.
+
+### 9C: Edges as stored relations
+
+Introduce the edge as a first-class stored object: a directed link making one
+seat's output visible to another seat's input. Absence of an edge is a
+deliberate configuration decision, not a default.
+
+### 9D: Conformance
+
+The marketing Council configuration must reproduce all 34 Phase 7 cases
+identically through the generalized engine, with identical terminal states and
+identical result payloads.
+
+### Exit Gate
+
+- [ ] marketing protocol fully expressed as Council configuration
+- [ ] seat count is configurable and no longer constrained to three
+- [ ] edges, including deliberate isolation, are stored rather than implied
+- [ ] termination is configured rather than hardcoded
+- [ ] all 34 Phase 7 fixture cases reproduce identically
+- [ ] a second Council configuration with a different topology executes
+- [ ] no Phase 7 fixture was modified to achieve any of the above
 
 ## MVP Outcome
 
@@ -714,6 +801,10 @@ provider-slot assignment.
 
 ## Explicitly Deferred
 
+Composability items formerly listed here — generalized protocol configuration,
+more than three reviewer slots, and multiple domain task packs — moved to
+**Phase 9** on 2026-08-27. They are now planned work, not deferred work.
+
 - direct Meta or other domain-system access
 - live Marketing OS integration or campaign data
 - Telegram approval capture
@@ -721,10 +812,7 @@ provider-slot assignment.
 - Marketing policy enforcement
 - Marketing outcome ownership
 - Marketing learning promotion
-- generalized workflow-protocol builder
 - unbounded multi-round debate
-- more than three reviewer slots
-- multiple domain task packs
 - learned reviewer routing
 - cross-domain reviewer scoring
 
@@ -746,10 +834,23 @@ Its scope is limited to optional ad-performance review:
 
 ## Immediate Next Build
 
+Two tracks, in parallel. See **Current Sequencing** above.
+
+**Track 2 — Composability (active, unblocked):**
+
+1. Run Phase 9A: express the marketing protocol as a Council configuration file,
+   unwired, and record what resists expression.
+2. Resolve the naming decisions listed at the end of `GLOSSARY.md`, in
+   particular the `Worker` collision between the scheduler process and the
+   delegated-executor concept.
+3. Only then begin 9B.
+
+**Track 1 — Marketing pilot (blocked on owner-supplied material, unchanged):**
+
 1. Supply and curate the 20 actual real/replay source cases; do not substitute
    deterministic fixtures for pilot evidence.
-2. Build the four controls from the reviewed cohort, then complete the two
-   human redaction and source-provenance attestations.
+2. Build the four controls from the reviewed cohort, then complete the two human
+   redaction and source-provenance attestations.
 3. Freeze the 24 packages with `phase8-freeze-cohort`.
 4. Freeze and review the exact plan, access, pricing, and budget manifest.
 5. Run `phase8-gate0` locally at $0 and review both evidence outputs.
