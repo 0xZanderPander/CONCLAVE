@@ -1,0 +1,80 @@
+{
+  "$id": "https://conclave.local/contracts/phase8/phase8-revocation-record.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "approval_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Approval Hash",
+      "type": "string"
+    },
+    "automatic_restart_allowed": {
+      "const": false,
+      "title": "Automatic Restart Allowed",
+      "type": "boolean"
+    },
+    "batch_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Batch Id",
+      "type": "string"
+    },
+    "contract_version": {
+      "const": "phase8-revocation/v1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "details": {
+      "maxLength": 1000,
+      "minLength": 1,
+      "title": "Details",
+      "type": "string"
+    },
+    "reason": {
+      "enum": [
+        "credential_or_data_exposure",
+        "prohibited_access",
+        "unapproved_contract_or_provider",
+        "context_leakage",
+        "invalid_output_accepted",
+        "audit_integrity_failure",
+        "critical_recommendation_defect",
+        "budget_or_time_breach",
+        "consecutive_session_failures",
+        "cohort_contract_failure",
+        "operator_stop"
+      ],
+      "title": "Reason",
+      "type": "string"
+    },
+    "revocation_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Revocation Hash",
+      "type": "string"
+    },
+    "revoked_at": {
+      "format": "date-time",
+      "title": "Revoked At",
+      "type": "string"
+    },
+    "revoked_by": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Revoked By",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract_version",
+    "batch_id",
+    "approval_hash",
+    "revoked_at",
+    "revoked_by",
+    "reason",
+    "details",
+    "automatic_restart_allowed",
+    "revocation_hash"
+  ],
+  "title": "Phase8RevocationRecord",
+  "type": "object"
+}

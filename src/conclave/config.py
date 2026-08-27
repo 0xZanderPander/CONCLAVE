@@ -41,6 +41,15 @@ class Settings:
     anthropic_base_url: str = DEFAULT_ANTHROPIC_BASE_URL
     google_api_key: str | None = field(default=None, repr=False)
     google_base_url: str = DEFAULT_GOOGLE_BASE_URL
+    phase8_cohort_manifest_path: str | None = None
+    phase8_case_packages_dir: str | None = None
+    phase8_access_manifest_path: str | None = None
+    phase8_gate0_report_path: str | None = None
+    phase8_approval_path: str | None = None
+    phase8_runtime_state_path: str | None = None
+    phase8_revocation_path: str | None = None
+    phase8_openai_secret_path: str | None = None
+    phase8_anthropic_secret_path: str | None = None
 
     def __post_init__(self) -> None:
         if self.caller_auth_mode not in {"local_fixture", "static_bearer"}:
@@ -49,28 +58,23 @@ class Settings:
             self.environment not in {"development", "test"}
             and self.caller_auth_mode == "local_fixture"
         ):
-            raise ValueError(
-                "non-local Conclave deployments require caller authentication"
-            )
+            raise ValueError("non-local Conclave deployments require caller authentication")
         if self.caller_auth_mode == "static_bearer" and not self.caller_credentials_json:
-            raise ValueError(
-                "static bearer authentication requires caller credentials"
-            )
+            raise ValueError("static bearer authentication requires caller credentials")
         if self.reviewer_runtime_mode not in {
             "fixture",
             "openai",
             "anthropic",
             "gemini",
             "multi_provider",
+            "phase8_pilot",
         }:
             raise ValueError("CONCLAVE_REVIEWER_RUNTIME_MODE is invalid")
         if (
             self.environment not in {"development", "test"}
             and self.reviewer_runtime_mode == "fixture"
         ):
-            raise ValueError(
-                "non-local Conclave deployments require a production reviewer runtime"
-            )
+            raise ValueError("non-local Conclave deployments require a production reviewer runtime")
         if self.reviewer_runtime_mode == "openai" and not self.openai_api_key:
             raise ValueError("the OpenAI reviewer runtime requires an API key")
         if self.reviewer_runtime_mode == "anthropic" and not self.anthropic_api_key:
@@ -83,10 +87,35 @@ class Settings:
             raise ValueError(
                 "the multi-provider reviewer runtime requires OpenAI and Anthropic API keys"
             )
+        if self.reviewer_runtime_mode == "phase8_pilot":
+            if self.environment != "pilot":
+                raise ValueError("the Phase 8 runtime requires CONCLAVE_ENVIRONMENT=pilot")
+            if self.openai_api_key or self.anthropic_api_key:
+                raise ValueError(
+                    "Phase 8 provider secrets must not be loaded into generic settings"
+                )
+            phase8_paths = {
+                "cohort manifest": self.phase8_cohort_manifest_path,
+                "case package directory": self.phase8_case_packages_dir,
+                "access manifest": self.phase8_access_manifest_path,
+                "Gate 0 report": self.phase8_gate0_report_path,
+                "batch approval": self.phase8_approval_path,
+                "runtime state": self.phase8_runtime_state_path,
+                "revocation record": self.phase8_revocation_path,
+                "OpenAI external secret": self.phase8_openai_secret_path,
+                "Anthropic external secret": self.phase8_anthropic_secret_path,
+            }
+            missing = [name for name, path in phase8_paths.items() if not path]
+            if missing:
+                raise ValueError(f"the Phase 8 runtime requires configured {', '.join(missing)}")
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str] | None = None) -> "Settings":
         values = environment if environment is not None else os.environ
+        reviewer_runtime_mode = values.get(
+            "CONCLAVE_REVIEWER_RUNTIME_MODE",
+            "fixture",
+        )
         settings = cls(
             environment=values.get("CONCLAVE_ENVIRONMENT", DEFAULT_ENVIRONMENT),
             database_url=values.get("CONCLAVE_DATABASE_URL", DEFAULT_DATABASE_URL),
@@ -112,16 +141,21 @@ class Settings:
                 "local_fixture",
             ),
             caller_credentials_json=values.get("CONCLAVE_CALLER_CREDENTIALS_JSON"),
-            reviewer_runtime_mode=values.get(
-                "CONCLAVE_REVIEWER_RUNTIME_MODE",
-                "fixture",
+            reviewer_runtime_mode=reviewer_runtime_mode,
+            openai_api_key=(
+                None
+                if reviewer_runtime_mode == "phase8_pilot"
+                else values.get("CONCLAVE_OPENAI_API_KEY")
             ),
-            openai_api_key=values.get("CONCLAVE_OPENAI_API_KEY"),
             openai_base_url=values.get(
                 "CONCLAVE_OPENAI_BASE_URL",
                 DEFAULT_OPENAI_BASE_URL,
             ),
-            anthropic_api_key=values.get("CONCLAVE_ANTHROPIC_API_KEY"),
+            anthropic_api_key=(
+                None
+                if reviewer_runtime_mode == "phase8_pilot"
+                else values.get("CONCLAVE_ANTHROPIC_API_KEY")
+            ),
             anthropic_base_url=values.get(
                 "CONCLAVE_ANTHROPIC_BASE_URL",
                 DEFAULT_ANTHROPIC_BASE_URL,
@@ -131,5 +165,14 @@ class Settings:
                 "CONCLAVE_GOOGLE_BASE_URL",
                 DEFAULT_GOOGLE_BASE_URL,
             ),
+            phase8_cohort_manifest_path=values.get("CONCLAVE_PHASE8_COHORT_MANIFEST_PATH"),
+            phase8_case_packages_dir=values.get("CONCLAVE_PHASE8_CASE_PACKAGES_DIR"),
+            phase8_access_manifest_path=values.get("CONCLAVE_PHASE8_ACCESS_MANIFEST_PATH"),
+            phase8_gate0_report_path=values.get("CONCLAVE_PHASE8_GATE0_REPORT_PATH"),
+            phase8_approval_path=values.get("CONCLAVE_PHASE8_APPROVAL_PATH"),
+            phase8_runtime_state_path=values.get("CONCLAVE_PHASE8_RUNTIME_STATE_PATH"),
+            phase8_revocation_path=values.get("CONCLAVE_PHASE8_REVOCATION_PATH"),
+            phase8_openai_secret_path=values.get("CONCLAVE_PHASE8_OPENAI_SECRET_PATH"),
+            phase8_anthropic_secret_path=values.get("CONCLAVE_PHASE8_ANTHROPIC_SECRET_PATH"),
         )
         return settings

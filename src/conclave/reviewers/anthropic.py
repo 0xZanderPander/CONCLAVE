@@ -41,9 +41,7 @@ def _output_text(document: dict[str, Any]) -> str:
         and isinstance(item.get("text"), str)
     ]
     if not chunks:
-        raise PermanentReviewerProviderError(
-            "the provider returned no structured output"
-        )
+        raise PermanentReviewerProviderError("the provider returned no structured output")
     return "".join(chunks)
 
 
@@ -56,8 +54,7 @@ def _structured_output_schema(schema: dict[str, Any]) -> dict[str, Any]:
     definitions = remaining.pop("$defs", None)
     if isinstance(definitions, dict):
         transformed["$defs"] = {
-            name: _structured_output_schema(definition)
-            for name, definition in definitions.items()
+            name: _structured_output_schema(definition) for name, definition in definitions.items()
         }
 
     reference = remaining.pop("$ref", None)
@@ -70,21 +67,13 @@ def _structured_output_schema(schema: dict[str, Any]) -> dict[str, Any]:
     one_of = remaining.pop("oneOf", None)
     all_of = remaining.pop("allOf", None)
     if isinstance(any_of, list):
-        transformed["anyOf"] = [
-            _structured_output_schema(variant) for variant in any_of
-        ]
+        transformed["anyOf"] = [_structured_output_schema(variant) for variant in any_of]
     elif isinstance(one_of, list):
-        transformed["anyOf"] = [
-            _structured_output_schema(variant) for variant in one_of
-        ]
+        transformed["anyOf"] = [_structured_output_schema(variant) for variant in one_of]
     elif isinstance(all_of, list):
-        transformed["allOf"] = [
-            _structured_output_schema(variant) for variant in all_of
-        ]
+        transformed["allOf"] = [_structured_output_schema(variant) for variant in all_of]
     elif schema_type is None:
-        raise ValueError(
-            "structured output schemas require type, anyOf, oneOf, or allOf"
-        )
+        raise ValueError("structured output schemas require type, anyOf, oneOf, or allOf")
     else:
         transformed["type"] = schema_type
 
@@ -126,9 +115,9 @@ def _structured_output_schema(schema: dict[str, Any]) -> dict[str, Any]:
             remaining["minItems"] = min_items
 
     if remaining:
-        constraint_summary = "{" + ", ".join(
-            f"{key}: {value}" for key, value in remaining.items()
-        ) + "}"
+        constraint_summary = (
+            "{" + ", ".join(f"{key}: {value}" for key, value in remaining.items()) + "}"
+        )
         existing_description = transformed.get("description")
         transformed["description"] = (
             f"{existing_description}\n\n{constraint_summary}"
@@ -152,7 +141,12 @@ class AnthropicMessagesProvider:
             raise ValueError("an Anthropic API key is required")
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
+        self._owns_client = client is None
         self._client = client or httpx.Client()
+
+    def close(self) -> None:
+        if self._owns_client:
+            self._client.close()
 
     def invoke(self, call: ReviewCall) -> ProviderCallResult:
         try:
@@ -172,11 +166,7 @@ class AnthropicMessagesProvider:
             "schema_version": call.schema_version,
             "snapshot": call.snapshot,
             "prior_claims": [
-                (
-                    claim.model_dump(mode="json")
-                    if isinstance(claim, AssessmentClaim)
-                    else claim
-                )
+                (claim.model_dump(mode="json") if isinstance(claim, AssessmentClaim) else claim)
                 for claim in call.prior_claims
             ],
             "own_assessment": (
@@ -184,12 +174,9 @@ class AnthropicMessagesProvider:
                 if call.own_assessment is not None
                 else None
             ),
-            "peer_assessments": [
-                peer.model_dump(mode="json") for peer in call.peer_assessments
-            ],
+            "peer_assessments": [peer.model_dump(mode="json") for peer in call.peer_assessments],
             "cross_review_responses": [
-                response.model_dump(mode="json")
-                for response in call.cross_review_responses
+                response.model_dump(mode="json") for response in call.cross_review_responses
             ],
             "comparison_history": list(call.comparison_history),
         }
@@ -212,9 +199,7 @@ class AnthropicMessagesProvider:
         output_config: dict[str, Any] = {
             "format": {
                 "type": "json_schema",
-                "schema": _structured_output_schema(
-                    contract.output_model.model_json_schema()
-                ),
+                "schema": _structured_output_schema(contract.output_model.model_json_schema()),
             }
         }
         if policy.reasoning_effort != "none":
@@ -293,9 +278,7 @@ class AnthropicMessagesProvider:
         usage_document = document.get("usage")
         usage_document = usage_document if isinstance(usage_document, dict) else {}
         input_tokens = int(usage_document.get("input_tokens") or 0)
-        cached_input_tokens = int(
-            usage_document.get("cache_read_input_tokens") or 0
-        )
+        cached_input_tokens = int(usage_document.get("cache_read_input_tokens") or 0)
         output_tokens = int(usage_document.get("output_tokens") or 0)
         total_tokens = input_tokens + output_tokens
         cost_usd = (
@@ -305,9 +288,7 @@ class AnthropicMessagesProvider:
         return ProviderCallResult(
             output=output,
             provider_request_id=provider_request_id,
-            provider_response_id=(
-                response_id if isinstance(response_id, str) else None
-            ),
+            provider_response_id=(response_id if isinstance(response_id, str) else None),
             finish_status=stop_reason,
             usage=ProviderUsage(
                 input_tokens=input_tokens,

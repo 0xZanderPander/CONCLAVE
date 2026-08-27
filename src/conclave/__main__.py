@@ -16,6 +16,17 @@ from conclave.fixtures import load_design_plan_revisions
 from conclave.intake import ReviewIntakeService
 from conclave.ledger.repository import LedgerRepository
 from conclave.orchestration.service import FixturePath, ReviewOrchestrator
+from conclave.pilot.phase8_contracts import (
+    phase8_json_schemas,
+    phase8_schemas_root,
+    validate_committed_phase8_schemas,
+    write_phase8_json_schemas,
+)
+from conclave.pilot.phase8_runner import (
+    freeze_phase8_cohort,
+    run_phase8_gate0,
+    write_phase8_gate0_evidence,
+)
 from conclave.pilot.runner import run_phase7_pilot
 from conclave.reviewers.factory import build_reviewer_runtime
 from conclave.runtime.processes import SchedulerProcess, WorkerProcess
@@ -79,6 +90,45 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("pilot-results/phase7"),
     )
+    subparsers.add_parser(
+        "phase8-validate-contracts",
+        help="Validate the offline Phase 8 artifact schemas.",
+    )
+    phase8_export = subparsers.add_parser(
+        "phase8-export-contracts",
+        help="Regenerate the offline Phase 8 artifact schemas.",
+    )
+    phase8_export.add_argument(
+        "--output-dir",
+        type=Path,
+        default=phase8_schemas_root(),
+    )
+    phase8_freeze = subparsers.add_parser(
+        "phase8-freeze-cohort",
+        help="Freeze 24 curated real/replay packages into a cohort manifest.",
+    )
+    phase8_freeze.add_argument("--case-packages-dir", type=Path, required=True)
+    phase8_freeze.add_argument("--output", type=Path, required=True)
+    phase8_freeze.add_argument("--cohort-id", required=True)
+    phase8_freeze.add_argument("--revision", type=int, default=1)
+    phase8_freeze.add_argument(
+        "--frozen-at",
+        type=datetime.fromisoformat,
+        help="Timezone-aware ISO-8601 freeze time; defaults to now.",
+    )
+    phase8_gate0 = subparsers.add_parser(
+        "phase8-gate0",
+        help="Run the credential-free Phase 8 Gate 0 evidence preflight.",
+    )
+    phase8_gate0.add_argument("--cohort-manifest", type=Path, required=True)
+    phase8_gate0.add_argument("--case-packages-dir", type=Path, required=True)
+    phase8_gate0.add_argument("--access-manifest", type=Path, required=True)
+    phase8_gate0.add_argument("--plan-revision", type=Path, required=True)
+    phase8_gate0.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("pilot-results/phase8/gate0"),
+    )
 
     scheduler = subparsers.add_parser(
         "scheduler",
@@ -132,10 +182,66 @@ def main() -> None:
         print(
             json.dumps(
                 {
-                    "output": str(
-                        args.output_dir / "phase7-pilot-results.json"
-                    ),
+                    "output": str(args.output_dir / "phase7-pilot-results.json"),
                     **report["summary"],
+                }
+            )
+        )
+        return
+    if args.command == "phase8-validate-contracts":
+        validate_committed_phase8_schemas()
+        print(f"Validated {len(phase8_json_schemas())} offline Phase 8 artifact schemas.")
+        return
+    if args.command == "phase8-export-contracts":
+        report = write_phase8_json_schemas(args.output_dir)
+        print(
+            json.dumps(
+                {
+                    "artifact_count": report.artifact_count,
+                    "output_dir": str(report.output_dir),
+                }
+            )
+        )
+        return
+    if args.command == "phase8-freeze-cohort":
+        cohort = freeze_phase8_cohort(
+            case_packages_dir=args.case_packages_dir,
+            output_path=args.output,
+            cohort_id=args.cohort_id,
+            revision=args.revision,
+            frozen_at=args.frozen_at,
+        )
+        print(
+            json.dumps(
+                {
+                    "output": str(args.output),
+                    "cohort_id": cohort.cohort_id,
+                    "cohort_hash": cohort.cohort_hash,
+                    "case_count": len(cohort.cases),
+                }
+            )
+        )
+        return
+    if args.command == "phase8-gate0":
+        report = run_phase8_gate0(
+            cohort_manifest_path=args.cohort_manifest,
+            case_packages_dir=args.case_packages_dir,
+            access_manifest_path=args.access_manifest,
+            plan_revision_path=args.plan_revision,
+        )
+        json_path, markdown_path = write_phase8_gate0_evidence(
+            report,
+            output_dir=args.output_dir,
+        )
+        print(
+            json.dumps(
+                {
+                    "passed": report.passed,
+                    "report_hash": report.report_hash,
+                    "provider_attempt_count": report.provider_attempt_count,
+                    "provider_spend_usd": report.provider_spend_usd,
+                    "json_report": str(json_path),
+                    "review_report": str(markdown_path),
                 }
             )
         )

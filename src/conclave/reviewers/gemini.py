@@ -42,9 +42,7 @@ def _structured_output_schema(schema: dict[str, Any]) -> dict[str, Any]:
         for key in ("$defs", "properties"):
             child_mapping = value.get(key)
             if isinstance(child_mapping, dict):
-                transformed[key] = {
-                    name: normalize(child) for name, child in child_mapping.items()
-                }
+                transformed[key] = {name: normalize(child) for name, child in child_mapping.items()}
         for key in ("items", "additionalProperties"):
             child = value.get(key)
             if isinstance(child, (dict, bool)):
@@ -90,9 +88,7 @@ def _output_text(document: dict[str, Any]) -> str:
             ):
                 chunks.append(content["text"])
     if not chunks:
-        raise PermanentReviewerProviderError(
-            "the provider returned no structured output"
-        )
+        raise PermanentReviewerProviderError("the provider returned no structured output")
     return "".join(chunks)
 
 
@@ -110,7 +106,12 @@ class GeminiInteractionsProvider:
             raise ValueError("a Google API key is required")
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
+        self._owns_client = client is None
         self._client = client or httpx.Client()
+
+    def close(self) -> None:
+        if self._owns_client:
+            self._client.close()
 
     def invoke(self, call: ReviewCall) -> ProviderCallResult:
         try:
@@ -130,11 +131,7 @@ class GeminiInteractionsProvider:
             "schema_version": call.schema_version,
             "snapshot": call.snapshot,
             "prior_claims": [
-                (
-                    claim.model_dump(mode="json")
-                    if isinstance(claim, AssessmentClaim)
-                    else claim
-                )
+                (claim.model_dump(mode="json") if isinstance(claim, AssessmentClaim) else claim)
                 for claim in call.prior_claims
             ],
             "own_assessment": (
@@ -142,12 +139,9 @@ class GeminiInteractionsProvider:
                 if call.own_assessment is not None
                 else None
             ),
-            "peer_assessments": [
-                peer.model_dump(mode="json") for peer in call.peer_assessments
-            ],
+            "peer_assessments": [peer.model_dump(mode="json") for peer in call.peer_assessments],
             "cross_review_responses": [
-                response.model_dump(mode="json")
-                for response in call.cross_review_responses
+                response.model_dump(mode="json") for response in call.cross_review_responses
             ],
             "comparison_history": list(call.comparison_history),
         }
@@ -175,9 +169,7 @@ class GeminiInteractionsProvider:
             "response_format": {
                 "type": "text",
                 "mime_type": "application/json",
-                "schema": _structured_output_schema(
-                    contract.output_model.model_json_schema()
-                ),
+                "schema": _structured_output_schema(contract.output_model.model_json_schema()),
             },
             "generation_config": {
                 "max_output_tokens": policy.max_output_tokens,
@@ -207,9 +199,8 @@ class GeminiInteractionsProvider:
                 "the provider request failed before a response was received"
             ) from exc
 
-        provider_request_id = (
-            response.headers.get("x-request-id")
-            or response.headers.get("x-goog-request-id")
+        provider_request_id = response.headers.get("x-request-id") or response.headers.get(
+            "x-goog-request-id"
         )
         if response.status_code >= 400:
             error_type = (
@@ -239,9 +230,7 @@ class GeminiInteractionsProvider:
             raise PermanentReviewerProviderError(
                 f"the provider response ended with status {status!r}",
                 provider_request_id=provider_request_id,
-                provider_response_id=(
-                    response_id if isinstance(response_id, str) else None
-                ),
+                provider_response_id=(response_id if isinstance(response_id, str) else None),
             )
         try:
             output = json.loads(_output_text(document))
@@ -249,9 +238,7 @@ class GeminiInteractionsProvider:
             raise PermanentReviewerProviderError(
                 "the provider output was not valid JSON",
                 provider_request_id=provider_request_id,
-                provider_response_id=(
-                    response_id if isinstance(response_id, str) else None
-                ),
+                provider_response_id=(response_id if isinstance(response_id, str) else None),
             ) from exc
 
         usage_document = document.get("usage")
@@ -260,26 +247,20 @@ class GeminiInteractionsProvider:
         output_tokens = int(usage_document.get("total_output_tokens") or 0)
         reasoning_tokens = int(usage_document.get("total_thought_tokens") or 0)
         total_tokens = int(
-            usage_document.get("total_tokens")
-            or input_tokens + output_tokens + reasoning_tokens
+            usage_document.get("total_tokens") or input_tokens + output_tokens + reasoning_tokens
         )
         cost_usd = (
             input_tokens * policy.input_cost_per_million_usd
-            + (output_tokens + reasoning_tokens)
-            * policy.output_cost_per_million_usd
+            + (output_tokens + reasoning_tokens) * policy.output_cost_per_million_usd
         ) / 1_000_000
         return ProviderCallResult(
             output=output,
             provider_request_id=provider_request_id,
-            provider_response_id=(
-                response_id if isinstance(response_id, str) else None
-            ),
+            provider_response_id=(response_id if isinstance(response_id, str) else None),
             finish_status=status if isinstance(status, str) else None,
             usage=ProviderUsage(
                 input_tokens=input_tokens,
-                cached_input_tokens=int(
-                    usage_document.get("total_cached_tokens") or 0
-                ),
+                cached_input_tokens=int(usage_document.get("total_cached_tokens") or 0),
                 output_tokens=output_tokens,
                 reasoning_tokens=reasoning_tokens,
                 total_tokens=total_tokens,

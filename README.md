@@ -65,6 +65,9 @@ Conclave.
 - [MVP Build Roadmap](MVP_build_roadmap.md)
 - [MVP Project Architecture](MVP_project_architecture.md)
 - [Phase 4B Contract Proposal](PHASE_4B_CONTRACT_PROPOSAL.md)
+- [Phase 8 Controlled Real/Replay Pilot](PHASE_8_CONTROLLED_REPLAY_PILOT.md)
+- [Phase 8 Offline Artifact Contracts](phase8-contracts/README.md)
+- [Phase 8 Real/Replay Cohort Workflow](phase8-cohort/README.md)
 - [Editable MVP Architecture Flowchart](MVP_architecture_flow.mmd)
 - [Domain Event Stream and Future Adapter Boundary](EVENT_STREAM.md)
 - [Documentation Audit Log](audit/CHANGELOG.md)
@@ -508,11 +511,13 @@ Completed foundation:
 
 Next:
 
-1. review the passing 34-case Phase 7 pilot and freeze the deterministic polling
-   MVP baseline
-2. prepare the deployment checklist without broadening Conclave into execution
-   or domain ownership
-3. use outcome-linked, non-synthetic evidence rather than compatibility or
+1. supply, curate, and freeze the 24-case real/replay cohort using the
+   dedicated credential-free Phase 8 runner
+2. freeze and review its redaction and source attestations, baselines, outcome
+   packages, exact plan, access manifest, and batch budgets
+3. require separate explicit approvals for the five-case canary and 15-case
+   completion batch before loading any live-provider credential
+4. use outcome-linked, non-synthetic evidence rather than compatibility or
    fixture outputs before assigning permanent reviewer positions
 
 Non-local API mode requires explicit bearer authentication and caller scopes.

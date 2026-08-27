@@ -76,16 +76,19 @@ class OpenAIResponsesProvider:
             raise ValueError("an OpenAI API key is required")
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
+        self._owns_client = client is None
         self._client = client or httpx.Client()
+
+    def close(self) -> None:
+        if self._owns_client:
+            self._client.close()
 
     def invoke(self, call: ReviewCall) -> ProviderCallResult:
         try:
             contract = provider_contract_for(call)
             validate_provider_context(call)
         except (LookupError, ValueError) as exc:
-            raise PermanentReviewerProviderError(
-                str(exc)
-            ) from exc
+            raise PermanentReviewerProviderError(str(exc)) from exc
         instructions = contract.instructions
         context = {
             "session_id": call.session_id,
@@ -98,11 +101,7 @@ class OpenAIResponsesProvider:
             "schema_version": call.schema_version,
             "snapshot": call.snapshot,
             "prior_claims": [
-                (
-                    claim.model_dump(mode="json")
-                    if isinstance(claim, AssessmentClaim)
-                    else claim
-                )
+                (claim.model_dump(mode="json") if isinstance(claim, AssessmentClaim) else claim)
                 for claim in call.prior_claims
             ],
             "own_assessment": (
@@ -110,12 +109,9 @@ class OpenAIResponsesProvider:
                 if call.own_assessment is not None
                 else None
             ),
-            "peer_assessments": [
-                peer.model_dump(mode="json") for peer in call.peer_assessments
-            ],
+            "peer_assessments": [peer.model_dump(mode="json") for peer in call.peer_assessments],
             "cross_review_responses": [
-                response.model_dump(mode="json")
-                for response in call.cross_review_responses
+                response.model_dump(mode="json") for response in call.cross_review_responses
             ],
             "comparison_history": list(call.comparison_history),
         }
@@ -149,9 +145,7 @@ class OpenAIResponsesProvider:
                     "name": contract.format_name,
                     "description": "A validated Conclave reviewer output.",
                     "strict": True,
-                    "schema": _strict_output_schema(
-                        contract.output_model.model_json_schema()
-                    ),
+                    "schema": _strict_output_schema(contract.output_model.model_json_schema()),
                 }
             },
         }

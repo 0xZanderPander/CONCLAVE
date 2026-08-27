@@ -67,9 +67,7 @@ class AssessmentClaim(BaseModel):
     def canonicalize_array_indexes(cls, value: object) -> object:
         if isinstance(value, (list, tuple)):
             return tuple(
-                re.sub(r"\[(\d+)\]", r".\1", item)
-                if isinstance(item, str)
-                else item
+                re.sub(r"\[(\d+)\]", r".\1", item) if isinstance(item, str) else item
                 for item in value
             )
         return value
@@ -126,9 +124,7 @@ def assign_assessment_claim_ids(
         if claim.claim_id is not None:
             raise ValueError("assessment-v2 claim IDs are assigned by Conclave")
         digest = hashlib.sha256(f"{invocation_id}|{ordinal}".encode()).hexdigest()[:24]
-        normalized.append(
-            claim.model_copy(update={"claim_id": f"clm_{digest}"})
-        )
+        normalized.append(claim.model_copy(update={"claim_id": f"clm_{digest}"}))
     return assessment.model_copy(update={"claims": tuple(normalized)})
 
 
@@ -147,9 +143,7 @@ class PeerClaimReview(BaseModel):
     def canonicalize_array_indexes(cls, value: object) -> object:
         if isinstance(value, (list, tuple)):
             return tuple(
-                re.sub(r"\[(\d+)\]", r".\1", item)
-                if isinstance(item, str)
-                else item
+                re.sub(r"\[(\d+)\]", r".\1", item) if isinstance(item, str) else item
                 for item in value
             )
         return value
@@ -208,10 +202,7 @@ class ReviewerCJudgment(BaseModel):
         )
         if len(classified_ids) != len(set(classified_ids)):
             raise ValueError("reviewer-C claim classifications must not overlap")
-        if any(
-            not claim_id.startswith("clm_")
-            for claim_id in classified_ids
-        ):
+        if any(not claim_id.startswith("clm_") for claim_id in classified_ids):
             raise ValueError("reviewer-C claim classifications require claim IDs")
         expected_slot = {
             "select_a": "A",
@@ -354,6 +345,18 @@ class ReviewerProvider(Protocol):
         """Return a structured response without changing external state."""
 
 
+class ProviderAttemptGuard(Protocol):
+    def before_provider_attempt(self, call: ReviewCall) -> None:
+        """Authorize one provider attempt before network access."""
+
+    def after_provider_attempt(
+        self,
+        call: ReviewCall,
+        attempt: ProviderAttempt,
+    ) -> None:
+        """Account for one provider attempt before its result is returned."""
+
+
 class UnknownReviewerProviderError(LookupError):
     pass
 
@@ -401,14 +404,27 @@ class ProviderRegistryRuntime:
         providers: Mapping[str, ReviewerProvider],
         *,
         max_attempts: int = 3,
+        attempt_guard: ProviderAttemptGuard | None = None,
     ) -> None:
         if max_attempts <= 0:
             raise ValueError("max_attempts must be positive")
         self._providers = dict(providers)
         self._max_attempts = max_attempts
+        self._attempt_guard = attempt_guard
         self._assessment_adapter = TypeAdapter(Assessment)
         self._cross_review_adapter = TypeAdapter(CrossReviewResponse)
         self._judgment_adapter = TypeAdapter(ReviewerCJudgment)
+
+    def close(self) -> None:
+        seen: set[int] = set()
+        for provider in self._providers.values():
+            identity = id(provider)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            close = getattr(provider, "close", None)
+            if callable(close):
+                close()
 
     def review(self, call: ReviewCall) -> ReviewerExecution:
         try:
@@ -422,8 +438,11 @@ class ProviderRegistryRuntime:
         first_attempt = call.attempt_number
         for attempt in range(first_attempt, first_attempt + maximum_attempts):
             attempt_call = call.model_copy(update={"attempt_number": attempt})
+            if self._attempt_guard is not None:
+                self._attempt_guard.before_provider_attempt(attempt_call)
             started_at = datetime.now(UTC)
             started_clock = monotonic()
+            result: ProviderCallResult | None = None
             try:
                 response = provider.invoke(attempt_call)
                 result = (
@@ -448,29 +467,9 @@ class ProviderRegistryRuntime:
                     0,
                 )
                 if result.usage.cost_usd > call.provider_policy.max_cost_usd:
-                    attempts.append(
-                        ProviderAttempt(
-                            attempt_number=attempt,
-                            status="budget_exceeded",
-                            started_at=started_at,
-                            completed_at=completed_at,
-                            latency_ms=latency_ms,
-                            provider_request_id=result.provider_request_id,
-                            provider_response_id=result.provider_response_id,
-                            finish_status=result.finish_status,
-                            usage=result.usage,
-                            error_type="budget_exceeded",
-                            error_message="provider response exceeded the approved cost ceiling",
-                        )
-                    )
-                    raise ReviewerProviderExhaustedError(
-                        f"reviewer provider {call.provider!r} exceeded its cost ceiling",
-                        tuple(attempts),
-                    )
-                attempts.append(
-                    ProviderAttempt(
+                    failed_attempt = ProviderAttempt(
                         attempt_number=attempt,
-                        status="succeeded",
+                        status="budget_exceeded",
                         started_at=started_at,
                         completed_at=completed_at,
                         latency_ms=latency_ms,
@@ -478,34 +477,63 @@ class ProviderRegistryRuntime:
                         provider_response_id=result.provider_response_id,
                         finish_status=result.finish_status,
                         usage=result.usage,
+                        error_type="budget_exceeded",
+                        error_message="provider response exceeded the approved cost ceiling",
                     )
+                    if self._attempt_guard is not None:
+                        self._attempt_guard.after_provider_attempt(
+                            attempt_call,
+                            failed_attempt,
+                        )
+                    attempts.append(failed_attempt)
+                    raise ReviewerProviderExhaustedError(
+                        f"reviewer provider {call.provider!r} exceeded its cost ceiling",
+                        tuple(attempts),
+                    )
+                succeeded_attempt = ProviderAttempt(
+                    attempt_number=attempt,
+                    status="succeeded",
+                    started_at=started_at,
+                    completed_at=completed_at,
+                    latency_ms=latency_ms,
+                    provider_request_id=result.provider_request_id,
+                    provider_response_id=result.provider_response_id,
+                    finish_status=result.finish_status,
+                    usage=result.usage,
                 )
+                if self._attempt_guard is not None:
+                    self._attempt_guard.after_provider_attempt(
+                        attempt_call,
+                        succeeded_attempt,
+                    )
+                attempts.append(succeeded_attempt)
                 return ReviewerExecution(output=output, attempts=tuple(attempts))
             except ReviewerProviderExhaustedError:
                 raise
             except ReviewerProviderError as exc:
                 completed_at = datetime.now(UTC)
-                attempts.append(
-                    ProviderAttempt(
-                        attempt_number=attempt,
-                        status=(
-                            "budget_exceeded"
-                            if isinstance(exc, ReviewerBudgetExceededError)
-                            else (
-                                "retryable_failure"
-                                if exc.retryable
-                                else "permanent_failure"
-                            )
-                        ),
-                        started_at=started_at,
-                        completed_at=completed_at,
-                        latency_ms=max(int((monotonic() - started_clock) * 1000), 0),
-                        provider_request_id=exc.provider_request_id,
-                        provider_response_id=exc.provider_response_id,
-                        error_type=exc.error_type,
-                        error_message=str(exc)[:1000],
-                    )
+                failed_attempt = ProviderAttempt(
+                    attempt_number=attempt,
+                    status=(
+                        "budget_exceeded"
+                        if isinstance(exc, ReviewerBudgetExceededError)
+                        else ("retryable_failure" if exc.retryable else "permanent_failure")
+                    ),
+                    started_at=started_at,
+                    completed_at=completed_at,
+                    latency_ms=max(int((monotonic() - started_clock) * 1000), 0),
+                    provider_request_id=exc.provider_request_id,
+                    provider_response_id=exc.provider_response_id,
+                    usage=ProviderUsage(pricing_version=call.provider_policy.pricing_version),
+                    error_type=exc.error_type,
+                    error_message=str(exc)[:1000],
                 )
+                if self._attempt_guard is not None:
+                    self._attempt_guard.after_provider_attempt(
+                        attempt_call,
+                        failed_attempt,
+                    )
+                attempts.append(failed_attempt)
                 attempts_used = attempt - first_attempt + 1
                 if not exc.retryable or attempts_used == maximum_attempts:
                     raise ReviewerProviderExhaustedError(
@@ -516,17 +544,33 @@ class ProviderRegistryRuntime:
                     ) from exc
             except Exception as exc:
                 completed_at = datetime.now(UTC)
-                attempts.append(
-                    ProviderAttempt(
-                        attempt_number=attempt,
-                        status="invalid_output",
-                        started_at=started_at,
-                        completed_at=completed_at,
-                        latency_ms=max(int((monotonic() - started_clock) * 1000), 0),
-                        error_type="invalid_output",
-                        error_message="provider output failed the reviewer contract",
-                    )
+                failed_attempt = ProviderAttempt(
+                    attempt_number=attempt,
+                    status="invalid_output",
+                    started_at=started_at,
+                    completed_at=completed_at,
+                    latency_ms=max(int((monotonic() - started_clock) * 1000), 0),
+                    provider_request_id=(
+                        result.provider_request_id if result is not None else None
+                    ),
+                    provider_response_id=(
+                        result.provider_response_id if result is not None else None
+                    ),
+                    finish_status=(result.finish_status if result is not None else None),
+                    usage=(
+                        result.usage
+                        if result is not None
+                        else ProviderUsage(pricing_version=call.provider_policy.pricing_version)
+                    ),
+                    error_type="invalid_output",
+                    error_message="provider output failed the reviewer contract",
                 )
+                if self._attempt_guard is not None:
+                    self._attempt_guard.after_provider_attempt(
+                        attempt_call,
+                        failed_attempt,
+                    )
+                attempts.append(failed_attempt)
                 raise ReviewerProviderExhaustedError(
                     f"reviewer provider {call.provider!r} returned invalid output",
                     tuple(attempts),

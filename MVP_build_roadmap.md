@@ -7,7 +7,9 @@ through 7 are complete for the deterministic polling-based MVP, and the
 three-provider compatibility gate is complete. Phase 6 feedback intake,
 immutable reviewer-evaluation candidates, and directional metrics are verified
 locally and on the hosted PostgreSQL project. The 34-case Phase 7 pilot passes
-locally with complete result and terminal-state audit reconstruction.
+locally with complete result and terminal-state audit reconstruction. Phase 8
+is defined as a controlled 24-case real/replay shadow pilot but remains
+unauthorized and disabled.
 
 The normal worker now routes from request and recommendation materiality,
 scheduled and failed-goal triggers, weighted disagreement, merge compatibility,
@@ -603,6 +605,76 @@ metrics, and all 34 audit traces. See
 - [x] The fixture suite demonstrates clear, auditable recommendations.
 - [x] No Conclave component has or requests Meta access.
 
+## Phase 8: Controlled Real/Replay Shadow Pilot
+
+**Status:** defined, not authorized, and not enabled. The complete
+pre-authorization contract is
+[`PHASE_8_CONTROLLED_REPLAY_PILOT.md`](PHASE_8_CONTROLLED_REPLAY_PILOT.md).
+
+### Cohort and execution
+
+- [x] define immutable Phase 8 case, cohort, redaction, access, approval,
+  revocation, blinded-rating, and pilot-report artifact contracts
+- [x] generate and drift-check the offline Phase 8 JSON Schemas
+- [x] require a hash-linked, unexpired Gate 0 report and batch approval before
+  either external pilot secret is read or provider adapter is constructed
+- [x] require an explicit approved case scope and exact snapshot, provider,
+  model, role, prompt, schema, pricing, and stage policy for every attempt
+- [x] durably reserve and settle every attempt against route, batch, and whole
+  pilot attempt, token, spend, and wall-time ceilings
+- [x] persist a fail-closed revocation record on unauthorized access, context
+  leakage, budget breach, audit-integrity failure, repeated invalid output, or
+  consecutive failed sessions
+- [x] implement a dedicated Phase 8 runner with separate credential-free
+  cohort/Gate 0 and approved-batch execution paths
+- [x] require explicit human-attested real-event or historical-replay source
+  provenance and reject synthetic cohort packages
+- [x] generate a sealed machine-readable and human-reviewable Gate 0 evidence
+  report only after every offline check passes
+- [ ] freeze 20 provider-eligible, redacted real/replay cases and four no-call
+  controls
+- [ ] include at least 12 outcome-linked cases, six material cases, six
+  weak/partial/tracking cases, four prior-disagreement cases, and four
+  observe/no-change baselines
+- [ ] capture every baseline before panel output and keep outcomes hidden until
+  the recommendation is frozen
+- [ ] pass the $0 Gate 0 contract, redaction, hash, routing, audit, and access
+  preflight
+- [ ] obtain separate explicit approval for the five-case canary
+- [ ] review the canary before separately approving the 15-case completion
+  batch
+
+### Budgets and access
+
+- [ ] keep all provider access disabled until a batch-specific approval names
+  exact cases, providers, models, contracts, prices, budgets, operator, and
+  expiry
+- [ ] enforce at most two attempts per stage, stage-specific input/output and
+  cost limits, route-specific cost and wall-time limits, a $5 canary cap, a
+  $10 completion-batch cap, and a $15 total cap
+- [ ] allow only the pinned pilot topology; prohibit provider substitution,
+  tools, browsing, storage, Marketing OS, Meta, and domain APIs
+- [ ] load only pilot-specific credentials through an external secret boundary
+  and revoke them after the approved batch
+
+### Acceptance
+
+- [ ] 100% audited completion in the canary and at least 95% cumulative
+  provider-eligible completion
+- [ ] 100% snapshot consistency, reviewer independence, legal route
+  reconstruction, telemetry completeness, and caller-decision marking for
+  material results
+- [ ] zero critical recommendation defects, invalid accepted outputs, duplicate
+  results, unauthorized access, provider substitution, or budget breaches
+- [ ] panel results score at least 4.0/5.0 and are at least as useful as the
+  baseline in at least 80% of comparable cases under blinded human review
+- [ ] average cost at most $0.25 per eligible case and p95 case cost at most
+  $0.75, with route-specific latency ceilings
+
+Passing Phase 8 permits only a larger shadow pilot. It does not authorize
+production routing, execution, causal claims, learned routing, or permanent
+provider-slot assignment.
+
 ## MVP Acceptance Checklist
 
 - [x] Conclave validates its local versioned contract fixtures.
@@ -674,8 +746,12 @@ Its scope is limited to optional ad-performance review:
 
 ## Immediate Next Build
 
-1. Freeze the deterministic polling MVP baseline and review its deployment
-   checklist.
-2. Collect outcome-linked, non-synthetic evidence before assigning permanent
-   reviewer positions.
-3. Keep any future hosted or live-provider run behind explicit approval.
+1. Supply and curate the 20 actual real/replay source cases; do not substitute
+   deterministic fixtures for pilot evidence.
+2. Build the four controls from the reviewed cohort, then complete the two
+   human redaction and source-provenance attestations.
+3. Freeze the 24 packages with `phase8-freeze-cohort`.
+4. Freeze and review the exact plan, access, pricing, and budget manifest.
+5. Run `phase8-gate0` locally at $0 and review both evidence outputs.
+6. Do not enable a live runtime until the five-case canary receives a separate,
+   explicit approval.

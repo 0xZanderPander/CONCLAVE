@@ -1,0 +1,221 @@
+{
+  "$defs": {
+    "Phase8BatchBudget": {
+      "additionalProperties": false,
+      "properties": {
+        "alert_percentages": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "const": 50,
+              "type": "integer"
+            },
+            {
+              "const": 75,
+              "type": "integer"
+            }
+          ],
+          "title": "Alert Percentages",
+          "type": "array"
+        },
+        "automatic_stop_percentage": {
+          "const": 100,
+          "title": "Automatic Stop Percentage",
+          "type": "integer"
+        },
+        "batch_attempt_cap": {
+          "maximum": 160,
+          "minimum": 1,
+          "title": "Batch Attempt Cap",
+          "type": "integer"
+        },
+        "batch_spend_cap_usd": {
+          "exclusiveMinimum": 0,
+          "title": "Batch Spend Cap Usd",
+          "type": "number"
+        },
+        "batch_token_cap": {
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Batch Token Cap",
+          "type": "integer"
+        },
+        "phase_attempt_cap": {
+          "const": 160,
+          "title": "Phase Attempt Cap",
+          "type": "integer"
+        },
+        "phase_spend_cap_usd": {
+          "const": 15.0,
+          "title": "Phase Spend Cap Usd",
+          "type": "number"
+        },
+        "phase_token_cap": {
+          "const": 1000000,
+          "title": "Phase Token Cap",
+          "type": "integer"
+        },
+        "unused_authority_rolls_forward": {
+          "const": false,
+          "title": "Unused Authority Rolls Forward",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "batch_spend_cap_usd",
+        "batch_attempt_cap",
+        "batch_token_cap",
+        "phase_spend_cap_usd",
+        "phase_attempt_cap",
+        "phase_token_cap",
+        "alert_percentages",
+        "automatic_stop_percentage",
+        "unused_authority_rolls_forward"
+      ],
+      "title": "Phase8BatchBudget",
+      "type": "object"
+    }
+  },
+  "$id": "https://conclave.local/contracts/phase8/phase8-batch-approval.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "access_manifest_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Access Manifest Hash",
+      "type": "string"
+    },
+    "access_manifest_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Access Manifest Id",
+      "type": "string"
+    },
+    "approval_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Approval Hash",
+      "type": "string"
+    },
+    "approval_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Approval Id",
+      "type": "string"
+    },
+    "approved_by": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Approved By",
+      "type": "string"
+    },
+    "approved_provider_access": {
+      "const": true,
+      "title": "Approved Provider Access",
+      "type": "boolean"
+    },
+    "batch_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Batch Id",
+      "type": "string"
+    },
+    "budget": {
+      "$ref": "#/$defs/Phase8BatchBudget"
+    },
+    "cohort_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Cohort Hash",
+      "type": "string"
+    },
+    "cohort_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Cohort Id",
+      "type": "string"
+    },
+    "contract_version": {
+      "const": "phase8-batch-approval/v1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "control_case_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Control Case Ids",
+      "type": "array"
+    },
+    "eligible_case_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Eligible Case Ids",
+      "type": "array"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "gate": {
+      "enum": [
+        "gate_1_canary",
+        "gate_2_completion"
+      ],
+      "title": "Gate",
+      "type": "string"
+    },
+    "gate_0_report_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Gate 0 Report Hash",
+      "type": "string"
+    },
+    "issued_at": {
+      "format": "date-time",
+      "title": "Issued At",
+      "type": "string"
+    },
+    "prior_gate_review_hash": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prior Gate Review Hash"
+    },
+    "stop_authority": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Stop Authority",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract_version",
+    "approval_id",
+    "gate",
+    "batch_id",
+    "cohort_id",
+    "cohort_hash",
+    "access_manifest_id",
+    "access_manifest_hash",
+    "gate_0_report_hash",
+    "eligible_case_ids",
+    "control_case_ids",
+    "budget",
+    "approved_provider_access",
+    "approved_by",
+    "stop_authority",
+    "issued_at",
+    "expires_at",
+    "approval_hash"
+  ],
+  "title": "Phase8BatchApproval",
+  "type": "object"
+}

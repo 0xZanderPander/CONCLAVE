@@ -9,6 +9,10 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 
 | Date | Rev | Requested by | Applied by | Summary |
 |---|---|---|---|---|
+| 2026-08-01 | r30 | Al | Codex | Added the dedicated Phase 8 cohort and batch runner, explicit real/replay provenance, immutable cohort freeze command, and credential-free machine and human Gate 0 evidence workflow |
+| 2026-07-29 | r29 | Al | Codex | Added the fail-closed Phase 8 authorization and safety runtime with pre-construction artifact validation, explicit case scopes, durable per-attempt budget reservations, exact contract isolation, and irreversible active-batch revocation |
+| 2026-07-29 | r28 | Al | Codex | Added the offline Phase 8 artifact-contract foundation, immutable hashing and cross-artifact validation, generated JSON Schemas, and contract tests without enabling provider access |
+| 2026-07-29 | r27 | Al | Codex | Defined the disabled Phase 8 controlled real/replay pilot, locked cohort, budgets, acceptance thresholds, provider-access manifest, approval waves, and stop conditions |
 | 2026-07-28 | r26 | Al | Codex | Added and passed the 34-case deterministic Phase 7 pilot, route and directional metrics, manual clarity review, terminal audit checks, and fixture hardening |
 | 2026-07-28 | r25 | Al | Codex | Added immutable Phase 6 reviewer-evaluation candidates, complete baseline/result comparison, directional route metrics, retrieval APIs, and migration 0011 |
 | 2026-07-28 | r24 | Al | Codex | Added the Phase 6 immutable feedback foundation, authenticated intake, idempotency, safe events, audit reconstruction, and migration 0010 |
@@ -37,6 +41,153 @@ Add a new entry whenever the design contract changes; do not edit past entries.
 | 2026-07-14 | r1 | Al | Al | Initial Marketing-first, read-only MVP design (baseline of these docs) |
 
 ---
+
+## r30 — 2026-08-01
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** Phase 8 runner, real/replay cohort curation boundary, and Gate 0
+evidence
+
+### Implementation
+
+1. Added explicit human-attested `real_event` or `historical_replay`
+   provenance to every case package, including an opaque source reference,
+   source hash, verifier, and mandatory `synthetic_data: false` declaration.
+2. Added an immutable cohort-freeze command that validates exactly 24 package
+   files, declared request-contract validity, chronology, coverage, distinct
+   eligible sources, duplicate provenance, and every cross-artifact hash.
+3. Added a credential-free Gate 0 command that cross-checks the exact plan,
+   task pack, provider-access stages and policies, route guards, controls,
+   approval shape, and provider pre-construction boundary.
+4. Gate 0 now performs a deterministic mechanics-only audit, idempotency, and
+   evaluation dry run with zero provider attempts and writes both a sealed JSON
+   report and a human-review evidence document.
+5. Added an approved-batch runner that operates only on the safety runtime's
+   exact allowlist, keeps controls on the local no-call path, scopes every
+   eligible provider execution, verifies the result audit, and durably marks
+   case completion.
+
+### Boundary
+
+- No real/replay source package was available in the repository, so no cohort
+  or Gate 0 artifact was fabricated or marked complete.
+- No provider credential was loaded, provider adapter constructed, approval
+  written, external provider attempt made, or spend incurred.
+- Gate 1 remains disabled pending actual cohort curation, a passing Gate 0
+  report, and a separate explicit human approval.
+
+---
+
+## r29 — 2026-07-29
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** Phase 8 provider-construction and per-attempt safety boundary
+
+### Implementation
+
+1. Added an explicit `phase8_pilot` runtime mode that requires the pilot
+   environment, caller authentication, external private secret-file
+   references, and every cohort, access, Gate 0, approval, state, and
+   revocation path.
+2. Provider secrets are read and adapters are constructed only after the
+   complete artifact chain, cohort packages, chronology, expiry, versions,
+   endpoint allowlist, prior state, and absence of revocation validate.
+3. Every review requires an explicit approved opaque case scope. This prevents
+   the duplicate/idempotency control—which intentionally shares a snapshot—
+   from being mistaken for its provider-eligible source case.
+4. Every provider attempt is authorized separately and durably reserved before
+   network access, then settled from safe provider telemetry.
+5. Exact snapshots, blind independent context, provider/model/role/prompt/
+   schema/pricing versions, stage order, retry rules, and route shape are
+   enforced before an attempt.
+6. Attempt, token, spend, latency, route, batch, and whole-pilot counters
+   survive process restarts. Pending uncertain attempts block further calls
+   until reconciliation.
+7. Hard violations create an immutable revocation record and block all later
+   provider access without automatic restart. Revocation and batch completion
+   also close and detach the provider adapters.
+8. Gate 2 cannot start from fresh state, inherit pending work, repeat a Gate 1
+   case, or proceed without the exact completed Gate 1 review hash.
+
+### Boundary
+
+- No real/replay cohort, Gate 0 report, approval, runtime state, revocation
+  record, credential, or provider call was created.
+- The normal fixture runtime remains the default.
+- A dedicated Phase 8 execution runner and the actual `$0` Gate 0 evidence
+  package are still required before a canary can be considered.
+
+---
+
+## r28 — 2026-07-29
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** offline Phase 8 artifact-contract foundation
+
+### Implementation
+
+1. Added immutable, strict models for case packages, the locked cohort,
+   two-person redaction attestations, exact provider-access and pricing
+   manifests, separate batch approvals, revocation records, blinded-rater
+   packets and submissions, and final pilot reports.
+2. Added canonical self-hashing, request-snapshot hashing, cohort-to-package
+   verification, duplicate-control verification, and approval-to-cohort/access
+   cross-checks.
+3. Encoded the 20-plus-four cohort shape and minimum overlapping coverage
+   requirements directly in the cohort contract.
+4. Encoded the mixed OpenAI-A/Anthropic-B/OpenAI-C topology and Phase 8
+   per-stage ceilings in the access-manifest contract.
+5. Generated ten deterministic JSON Schemas and added commands and tests that
+   detect schema drift.
+
+### Boundary
+
+- This revision creates definitions and offline validation only.
+- It does not create or freeze the real/replay cohort, implement runtime
+  authorization guards, create a batch approval, load a credential, or make a
+  provider call.
+- Phase 8 remains disabled pending later Gate 0 implementation and evidence.
+
+---
+
+## r27 — 2026-07-29
+
+**Requested by:** Al
+**Applied by:** Codex
+**Scope:** pre-authorization definition for controlled real/replay cases,
+budgets, acceptance thresholds, provider access, staged approvals, and hard
+stops before any new live model call
+
+### Decision
+
+1. Phase 8 is a 24-case shadow pilot: 20 provider-eligible real/replay cases
+   and four no-call controls.
+2. Provider access remains disabled through a $0 offline preflight.
+3. A five-case canary and 15-case completion batch require separate explicit
+   approvals; authority and unused budget do not roll forward.
+4. The proposed pilot-only topology reuses the compatibility-tested mixed
+   panel, pins every provider/model/contract/pricing version, and prohibits
+   silent substitution.
+5. The hard spend ceiling is $15, with stage, route, batch, attempt, token, and
+   wall-time limits.
+6. Hard gates require complete snapshot isolation, audit reconstruction,
+   telemetry, caller authority, and data security, plus zero critical defects,
+   invalid accepted outputs, duplicates, unauthorized access, or budget
+   breaches.
+7. Quality is reviewed against a captured single-reviewer baseline by two
+   blinded human raters. Outcome-linked metrics remain directional and cannot
+   establish causal lift or permanent provider ranking.
+
+### Boundary
+
+- This revision does not load credentials, change runtime configuration,
+  enable a provider, transmit evidence, or make a model call.
+- Marketing OS, Meta, tools, browsing, storage, execution, approval authority,
+  outcome ownership, and learned routing remain outside Conclave.
+- Passing Phase 8 permits only consideration of a larger shadow pilot.
 
 ## r26 — 2026-07-28
 

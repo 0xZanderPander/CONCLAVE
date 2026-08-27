@@ -1,0 +1,661 @@
+{
+  "$defs": {
+    "Phase8BaselinePackage": {
+      "additionalProperties": false,
+      "properties": {
+        "assessment": {
+          "additionalProperties": true,
+          "title": "Assessment",
+          "type": "object"
+        },
+        "baseline_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Baseline Hash",
+          "type": "string"
+        },
+        "captured_at": {
+          "format": "date-time",
+          "title": "Captured At",
+          "type": "string"
+        },
+        "captured_before_panel_output": {
+          "const": true,
+          "title": "Captured Before Panel Output",
+          "type": "boolean"
+        },
+        "contract_version": {
+          "const": "phase8-baseline/v1",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "reviewer_kind": {
+          "const": "single_reviewer",
+          "title": "Reviewer Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_version",
+        "captured_at",
+        "captured_before_panel_output",
+        "reviewer_kind",
+        "assessment",
+        "baseline_hash"
+      ],
+      "title": "Phase8BaselinePackage",
+      "type": "object"
+    },
+    "Phase8EvidenceQuality": {
+      "additionalProperties": false,
+      "properties": {
+        "is_partial": {
+          "title": "Is Partial",
+          "type": "boolean"
+        },
+        "known_gaps": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Known Gaps",
+          "type": "array"
+        },
+        "label": {
+          "enum": [
+            "strong",
+            "adequate",
+            "weak",
+            "insufficient"
+          ],
+          "title": "Label",
+          "type": "string"
+        },
+        "tracking_health": {
+          "enum": [
+            "healthy",
+            "degraded",
+            "unhealthy",
+            "unknown"
+          ],
+          "title": "Tracking Health",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "is_partial",
+        "tracking_health"
+      ],
+      "title": "Phase8EvidenceQuality",
+      "type": "object"
+    },
+    "Phase8OutcomePackage": {
+      "additionalProperties": false,
+      "properties": {
+        "attached_only_after_panel_recommendation_frozen": {
+          "const": true,
+          "title": "Attached Only After Panel Recommendation Frozen",
+          "type": "boolean"
+        },
+        "caller_decision": {
+          "enum": [
+            "accepted",
+            "modified",
+            "rejected",
+            "deferred",
+            "no_action"
+          ],
+          "title": "Caller Decision",
+          "type": "string"
+        },
+        "contract_version": {
+          "const": "phase8-outcome/v1",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "decision_ref": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Decision Ref",
+          "type": "string"
+        },
+        "evaluated_at": {
+          "format": "date-time",
+          "title": "Evaluated At",
+          "type": "string"
+        },
+        "known_confounders": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Known Confounders",
+          "type": "array"
+        },
+        "outcome_classification": {
+          "enum": [
+            "beneficial",
+            "harmful",
+            "no_effect",
+            "mixed",
+            "inconclusive"
+          ],
+          "title": "Outcome Classification",
+          "type": "string"
+        },
+        "outcome_evidence_quality": {
+          "enum": [
+            "strong",
+            "adequate",
+            "weak",
+            "insufficient"
+          ],
+          "title": "Outcome Evidence Quality",
+          "type": "string"
+        },
+        "outcome_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Outcome Hash",
+          "type": "string"
+        },
+        "outcome_ref": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Outcome Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_version",
+        "decision_ref",
+        "outcome_ref",
+        "caller_decision",
+        "outcome_classification",
+        "outcome_evidence_quality",
+        "known_confounders",
+        "evaluated_at",
+        "attached_only_after_panel_recommendation_frozen",
+        "outcome_hash"
+      ],
+      "title": "Phase8OutcomePackage",
+      "type": "object"
+    },
+    "Phase8RedactionAttestation": {
+      "additionalProperties": false,
+      "properties": {
+        "attestation_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Attestation Hash",
+          "type": "string"
+        },
+        "attestation_id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Attestation Id",
+          "type": "string"
+        },
+        "case_id": {
+          "pattern": "^p8c_[a-f0-9]{16}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "checklist": {
+          "$ref": "#/$defs/Phase8RedactionChecklist"
+        },
+        "contract_version": {
+          "const": "phase8-redaction-attestation/v1",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "reviewed_at": {
+          "format": "date-time",
+          "title": "Reviewed At",
+          "type": "string"
+        },
+        "reviewer_ids": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Reviewer Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "contract_version",
+        "attestation_id",
+        "case_id",
+        "reviewed_at",
+        "reviewer_ids",
+        "checklist",
+        "attestation_hash"
+      ],
+      "title": "Phase8RedactionAttestation",
+      "type": "object"
+    },
+    "Phase8RedactionChecklist": {
+      "additionalProperties": false,
+      "properties": {
+        "business_identifiers_opaque": {
+          "const": true,
+          "title": "Business Identifiers Opaque",
+          "type": "boolean"
+        },
+        "credentials_and_tokens_removed": {
+          "const": true,
+          "title": "Credentials And Tokens Removed",
+          "type": "boolean"
+        },
+        "customer_identifiers_removed": {
+          "const": true,
+          "title": "Customer Identifiers Removed",
+          "type": "boolean"
+        },
+        "direct_contact_details_removed": {
+          "const": true,
+          "title": "Direct Contact Details Removed",
+          "type": "boolean"
+        },
+        "personal_data_removed": {
+          "const": true,
+          "title": "Personal Data Removed",
+          "type": "boolean"
+        },
+        "raw_message_content_removed": {
+          "const": true,
+          "title": "Raw Message Content Removed",
+          "type": "boolean"
+        },
+        "redaction_map_stored_outside_conclave": {
+          "const": true,
+          "title": "Redaction Map Stored Outside Conclave",
+          "type": "boolean"
+        },
+        "sensitive_values_normalized_when_exact_values_unneeded": {
+          "const": true,
+          "title": "Sensitive Values Normalized When Exact Values Unneeded",
+          "type": "boolean"
+        },
+        "timestamps_shifted_when_exact_dates_unneeded": {
+          "const": true,
+          "title": "Timestamps Shifted When Exact Dates Unneeded",
+          "type": "boolean"
+        },
+        "unnecessary_free_text_removed": {
+          "const": true,
+          "title": "Unnecessary Free Text Removed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "personal_data_removed",
+        "credentials_and_tokens_removed",
+        "direct_contact_details_removed",
+        "customer_identifiers_removed",
+        "raw_message_content_removed",
+        "unnecessary_free_text_removed",
+        "business_identifiers_opaque",
+        "timestamps_shifted_when_exact_dates_unneeded",
+        "sensitive_values_normalized_when_exact_values_unneeded",
+        "redaction_map_stored_outside_conclave"
+      ],
+      "title": "Phase8RedactionChecklist",
+      "type": "object"
+    },
+    "Phase8RoutingProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline_observe_or_no_change": {
+          "title": "Baseline Observe Or No Change",
+          "type": "boolean"
+        },
+        "expected_route": {
+          "anyOf": [
+            {
+              "enum": [
+                "a_only",
+                "ab_agreement",
+                "cross_review_resolved",
+                "c_tie_broken"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected Route"
+        },
+        "prior_recommendation_material": {
+          "title": "Prior Recommendation Material",
+          "type": "boolean"
+        },
+        "prior_reviewers_disagreed": {
+          "title": "Prior Reviewers Disagreed",
+          "type": "boolean"
+        },
+        "request_material": {
+          "title": "Request Material",
+          "type": "boolean"
+        },
+        "reviewed_at": {
+          "format": "date-time",
+          "title": "Reviewed At",
+          "type": "string"
+        },
+        "reviewed_by": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Reviewed By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_route",
+        "request_material",
+        "prior_recommendation_material",
+        "prior_reviewers_disagreed",
+        "baseline_observe_or_no_change",
+        "reviewed_by",
+        "reviewed_at"
+      ],
+      "title": "Phase8RoutingProfile",
+      "type": "object"
+    },
+    "Phase8SourceProvenance": {
+      "additionalProperties": false,
+      "description": "Human-attested proof that a package is real or historically replayed.",
+      "properties": {
+        "redacted_snapshot_derived_from_source": {
+          "const": true,
+          "title": "Redacted Snapshot Derived From Source",
+          "type": "boolean"
+        },
+        "source_kind": {
+          "enum": [
+            "real_event",
+            "historical_replay"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_record_ref": {
+          "pattern": "^p8src_[a-f0-9]{16}$",
+          "title": "Source Record Ref",
+          "type": "string"
+        },
+        "source_snapshot_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Source Snapshot Hash",
+          "type": "string"
+        },
+        "synthetic_data": {
+          "const": false,
+          "title": "Synthetic Data",
+          "type": "boolean"
+        },
+        "verified_at": {
+          "format": "date-time",
+          "title": "Verified At",
+          "type": "string"
+        },
+        "verified_by": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Verified By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_kind",
+        "source_record_ref",
+        "source_snapshot_hash",
+        "verified_at",
+        "verified_by",
+        "redacted_snapshot_derived_from_source",
+        "synthetic_data"
+      ],
+      "title": "Phase8SourceProvenance",
+      "type": "object"
+    },
+    "Phase8VersionPins": {
+      "additionalProperties": false,
+      "properties": {
+        "plan_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Plan Hash",
+          "type": "string"
+        },
+        "plan_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "plan_revision": {
+          "minimum": 1,
+          "title": "Plan Revision",
+          "type": "integer"
+        },
+        "prompt_bundle_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Prompt Bundle Version",
+          "type": "string"
+        },
+        "role_bundle_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Role Bundle Version",
+          "type": "string"
+        },
+        "schema_bundle_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Schema Bundle Version",
+          "type": "string"
+        },
+        "task_pack_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Task Pack Hash",
+          "type": "string"
+        },
+        "task_pack_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Task Pack Id",
+          "type": "string"
+        },
+        "task_pack_revision": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Task Pack Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_pack_id",
+        "task_pack_revision",
+        "task_pack_hash",
+        "plan_id",
+        "plan_revision",
+        "plan_hash",
+        "prompt_bundle_version",
+        "role_bundle_version",
+        "schema_bundle_version"
+      ],
+      "title": "Phase8VersionPins",
+      "type": "object"
+    }
+  },
+  "$id": "https://conclave.local/contracts/phase8/phase8-case-package.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "baseline": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Phase8BaselinePackage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "case_id": {
+      "pattern": "^p8c_[a-f0-9]{16}$",
+      "title": "Case Id",
+      "type": "string"
+    },
+    "case_kind": {
+      "enum": [
+        "provider_eligible",
+        "no_call_control"
+      ],
+      "title": "Case Kind",
+      "type": "string"
+    },
+    "case_package_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Case Package Hash",
+      "type": "string"
+    },
+    "contract_version": {
+      "const": "phase8-case-package/v1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "control_type": {
+      "anyOf": [
+        {
+          "enum": [
+            "stale_package",
+            "invalid_contract",
+            "duplicate_replay",
+            "unapproved_provider"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Control Type"
+    },
+    "duplicate_of_case_id": {
+      "anyOf": [
+        {
+          "pattern": "^p8c_[a-f0-9]{16}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Duplicate Of Case Id"
+    },
+    "evidence_quality": {
+      "$ref": "#/$defs/Phase8EvidenceQuality"
+    },
+    "evidence_version": {
+      "pattern": "^p8ev_[a-f0-9]{16}$",
+      "title": "Evidence Version",
+      "type": "string"
+    },
+    "expected_disposition": {
+      "enum": [
+        "provider_call_allowed",
+        "stop_stale",
+        "stop_invalid_contract",
+        "stop_duplicate",
+        "stop_unapproved_provider"
+      ],
+      "title": "Expected Disposition",
+      "type": "string"
+    },
+    "outcome_package": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Phase8OutcomePackage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "redaction_attestation": {
+      "$ref": "#/$defs/Phase8RedactionAttestation"
+    },
+    "request_contract_valid": {
+      "title": "Request Contract Valid",
+      "type": "boolean"
+    },
+    "request_snapshot": {
+      "additionalProperties": true,
+      "title": "Request Snapshot",
+      "type": "object"
+    },
+    "request_snapshot_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Request Snapshot Hash",
+      "type": "string"
+    },
+    "requested_provider": {
+      "anyOf": [
+        {
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Requested Provider"
+    },
+    "routing_profile": {
+      "$ref": "#/$defs/Phase8RoutingProfile"
+    },
+    "source_provenance": {
+      "$ref": "#/$defs/Phase8SourceProvenance"
+    },
+    "version_pins": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Phase8VersionPins"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "contract_version",
+    "case_id",
+    "evidence_version",
+    "case_kind",
+    "expected_disposition",
+    "request_contract_valid",
+    "request_snapshot",
+    "request_snapshot_hash",
+    "source_provenance",
+    "routing_profile",
+    "redaction_attestation",
+    "evidence_quality",
+    "case_package_hash"
+  ],
+  "title": "Phase8CasePackage",
+  "type": "object"
+}

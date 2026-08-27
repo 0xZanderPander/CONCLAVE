@@ -1,0 +1,206 @@
+{
+  "$defs": {
+    "Phase8CandidateRating": {
+      "additionalProperties": false,
+      "properties": {
+        "caller_decision_required_marked": {
+          "title": "Caller Decision Required Marked",
+          "type": "boolean"
+        },
+        "critical_defects": {
+          "default": [],
+          "items": {
+            "enum": [
+              "unsupported_material_action",
+              "evidence_mismatch",
+              "hidden_authority",
+              "unsafe_certainty"
+            ],
+            "type": "string"
+          },
+          "title": "Critical Defects",
+          "type": "array"
+        },
+        "label": {
+          "enum": [
+            "result_1",
+            "result_2"
+          ],
+          "title": "Label",
+          "type": "string"
+        },
+        "material_recommendation": {
+          "title": "Material Recommendation",
+          "type": "boolean"
+        },
+        "scores": {
+          "$ref": "#/$defs/Phase8DimensionScores"
+        }
+      },
+      "required": [
+        "label",
+        "scores",
+        "material_recommendation",
+        "caller_decision_required_marked"
+      ],
+      "title": "Phase8CandidateRating",
+      "type": "object"
+    },
+    "Phase8DimensionScores": {
+      "additionalProperties": false,
+      "properties": {
+        "boundedness_authority_and_safety": {
+          "maximum": 5,
+          "minimum": 1,
+          "title": "Boundedness Authority And Safety",
+          "type": "integer"
+        },
+        "clarity_and_actionability": {
+          "maximum": 5,
+          "minimum": 1,
+          "title": "Clarity And Actionability",
+          "type": "integer"
+        },
+        "evidence_linkage_and_factual_support": {
+          "maximum": 5,
+          "minimum": 1,
+          "title": "Evidence Linkage And Factual Support",
+          "type": "integer"
+        },
+        "uncertainty_quality_and_confounders": {
+          "maximum": 5,
+          "minimum": 1,
+          "title": "Uncertainty Quality And Confounders",
+          "type": "integer"
+        },
+        "usefulness_for_decision": {
+          "maximum": 5,
+          "minimum": 1,
+          "title": "Usefulness For Decision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evidence_linkage_and_factual_support",
+        "clarity_and_actionability",
+        "uncertainty_quality_and_confounders",
+        "boundedness_authority_and_safety",
+        "usefulness_for_decision"
+      ],
+      "title": "Phase8DimensionScores",
+      "type": "object"
+    },
+    "Phase8RaterItemRating": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/Phase8CandidateRating"
+            },
+            {
+              "$ref": "#/$defs/Phase8CandidateRating"
+            }
+          ],
+          "title": "Candidates",
+          "type": "array"
+        },
+        "item_id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Item Id",
+          "type": "string"
+        },
+        "notes": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Notes",
+          "type": "string"
+        },
+        "usefulness_preference": {
+          "enum": [
+            "result_1",
+            "result_2",
+            "equal",
+            "not_comparable"
+          ],
+          "title": "Usefulness Preference",
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_id",
+        "candidates",
+        "usefulness_preference"
+      ],
+      "title": "Phase8RaterItemRating",
+      "type": "object"
+    }
+  },
+  "$id": "https://conclave.local/contracts/phase8/phase8-rater-submission.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "const": "phase8-rater-submission/v1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "packet_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Packet Hash",
+      "type": "string"
+    },
+    "packet_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Packet Id",
+      "type": "string"
+    },
+    "rater_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Rater Id",
+      "type": "string"
+    },
+    "ratings": {
+      "items": {
+        "$ref": "#/$defs/Phase8RaterItemRating"
+      },
+      "maxItems": 20,
+      "minItems": 1,
+      "title": "Ratings",
+      "type": "array"
+    },
+    "submission_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Submission Hash",
+      "type": "string"
+    },
+    "submission_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Submission Id",
+      "type": "string"
+    },
+    "submitted_at": {
+      "format": "date-time",
+      "title": "Submitted At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract_version",
+    "submission_id",
+    "packet_id",
+    "packet_hash",
+    "rater_id",
+    "submitted_at",
+    "ratings",
+    "submission_hash"
+  ],
+  "title": "Phase8RaterSubmission",
+  "type": "object"
+}

@@ -1,0 +1,511 @@
+{
+  "$defs": {
+    "Phase8CredentialBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "excluded_from_commands_and_reports": {
+          "const": true,
+          "title": "Excluded From Commands And Reports",
+          "type": "boolean"
+        },
+        "external_secret_ref": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Secret Ref",
+          "type": "string"
+        },
+        "pilot_specific": {
+          "const": true,
+          "title": "Pilot Specific",
+          "type": "boolean"
+        },
+        "provider": {
+          "enum": [
+            "openai",
+            "anthropic"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "revoke_after_batch": {
+          "const": true,
+          "title": "Revoke After Batch",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "provider",
+        "external_secret_ref",
+        "pilot_specific",
+        "excluded_from_commands_and_reports",
+        "revoke_after_batch"
+      ],
+      "title": "Phase8CredentialBinding",
+      "type": "object"
+    },
+    "Phase8PricingVerification": {
+      "additionalProperties": false,
+      "properties": {
+        "pricing_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Pricing Version",
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "openai",
+            "anthropic"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "source_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Source Hash",
+          "type": "string"
+        },
+        "source_url": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Source Url",
+          "type": "string"
+        },
+        "verified_at": {
+          "format": "date-time",
+          "title": "Verified At",
+          "type": "string"
+        },
+        "verified_by": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Verified By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "pricing_version",
+        "source_url",
+        "source_hash",
+        "verified_at",
+        "verified_by"
+      ],
+      "title": "Phase8PricingVerification",
+      "type": "object"
+    },
+    "Phase8ProhibitedCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "browsing": {
+          "const": false,
+          "default": false,
+          "title": "Browsing",
+          "type": "boolean"
+        },
+        "code_execution": {
+          "const": false,
+          "default": false,
+          "title": "Code Execution",
+          "type": "boolean"
+        },
+        "domain_apis": {
+          "const": false,
+          "default": false,
+          "title": "Domain Apis",
+          "type": "boolean"
+        },
+        "file_access": {
+          "const": false,
+          "default": false,
+          "title": "File Access",
+          "type": "boolean"
+        },
+        "marketing_os": {
+          "const": false,
+          "default": false,
+          "title": "Marketing Os",
+          "type": "boolean"
+        },
+        "meta": {
+          "const": false,
+          "default": false,
+          "title": "Meta",
+          "type": "boolean"
+        },
+        "provider_fallback": {
+          "const": false,
+          "default": false,
+          "title": "Provider Fallback",
+          "type": "boolean"
+        },
+        "provider_tools": {
+          "const": false,
+          "default": false,
+          "title": "Provider Tools",
+          "type": "boolean"
+        },
+        "remote_storage": {
+          "const": false,
+          "default": false,
+          "title": "Remote Storage",
+          "type": "boolean"
+        }
+      },
+      "title": "Phase8ProhibitedCapabilities",
+      "type": "object"
+    },
+    "Phase8ProviderPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "input_cost_per_million_usd": {
+          "minimum": 0,
+          "title": "Input Cost Per Million Usd",
+          "type": "number"
+        },
+        "max_attempts": {
+          "maximum": 2,
+          "minimum": 1,
+          "title": "Max Attempts",
+          "type": "integer"
+        },
+        "max_cost_usd": {
+          "exclusiveMinimum": 0,
+          "title": "Max Cost Usd",
+          "type": "number"
+        },
+        "max_input_characters": {
+          "minimum": 1,
+          "title": "Max Input Characters",
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "maximum": 4000,
+          "minimum": 1,
+          "title": "Max Output Tokens",
+          "type": "integer"
+        },
+        "output_cost_per_million_usd": {
+          "minimum": 0,
+          "title": "Output Cost Per Million Usd",
+          "type": "number"
+        },
+        "reasoning_effort": {
+          "enum": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "title": "Reasoning Effort",
+          "type": "string"
+        },
+        "retryable_failures_only": {
+          "const": true,
+          "title": "Retryable Failures Only",
+          "type": "boolean"
+        },
+        "timeout_seconds": {
+          "maximum": 720,
+          "minimum": 1,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_attempts",
+        "max_input_characters",
+        "max_output_tokens",
+        "max_cost_usd",
+        "timeout_seconds",
+        "retryable_failures_only",
+        "reasoning_effort",
+        "input_cost_per_million_usd",
+        "output_cost_per_million_usd"
+      ],
+      "title": "Phase8ProviderPolicy",
+      "type": "object"
+    },
+    "Phase8StageAccess": {
+      "additionalProperties": false,
+      "properties": {
+        "base_url": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Base Url",
+          "type": "string"
+        },
+        "model": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "policy": {
+          "$ref": "#/$defs/Phase8ProviderPolicy"
+        },
+        "pricing_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Pricing Version",
+          "type": "string"
+        },
+        "prompt_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "openai",
+            "anthropic"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "role_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Role Version",
+          "type": "string"
+        },
+        "schema_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "slot": {
+          "enum": [
+            "A",
+            "B",
+            "C"
+          ],
+          "title": "Slot",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "independent",
+            "cross_review",
+            "judging"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "stage_id": {
+          "enum": [
+            "reviewer_a_independent",
+            "reviewer_b_independent",
+            "reviewer_a_cross_review",
+            "reviewer_b_cross_review",
+            "reviewer_c_blind_assessment",
+            "reviewer_c_judgment"
+          ],
+          "title": "Stage Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stage_id",
+        "slot",
+        "stage",
+        "provider",
+        "base_url",
+        "model",
+        "role_version",
+        "prompt_version",
+        "schema_version",
+        "pricing_version",
+        "policy"
+      ],
+      "title": "Phase8StageAccess",
+      "type": "object"
+    },
+    "Phase8VersionPins": {
+      "additionalProperties": false,
+      "properties": {
+        "plan_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Plan Hash",
+          "type": "string"
+        },
+        "plan_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "plan_revision": {
+          "minimum": 1,
+          "title": "Plan Revision",
+          "type": "integer"
+        },
+        "prompt_bundle_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Prompt Bundle Version",
+          "type": "string"
+        },
+        "role_bundle_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Role Bundle Version",
+          "type": "string"
+        },
+        "schema_bundle_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Schema Bundle Version",
+          "type": "string"
+        },
+        "task_pack_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Task Pack Hash",
+          "type": "string"
+        },
+        "task_pack_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Task Pack Id",
+          "type": "string"
+        },
+        "task_pack_revision": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Task Pack Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_pack_id",
+        "task_pack_revision",
+        "task_pack_hash",
+        "plan_id",
+        "plan_revision",
+        "plan_hash",
+        "prompt_bundle_version",
+        "role_bundle_version",
+        "schema_bundle_version"
+      ],
+      "title": "Phase8VersionPins",
+      "type": "object"
+    }
+  },
+  "$id": "https://conclave.local/contracts/phase8/phase8-access-manifest.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "cohort_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Cohort Hash",
+      "type": "string"
+    },
+    "cohort_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Cohort Id",
+      "type": "string"
+    },
+    "contract_version": {
+      "const": "phase8-provider-access-manifest/v1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "credentials": {
+      "items": {
+        "$ref": "#/$defs/Phase8CredentialBinding"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "title": "Credentials",
+      "type": "array"
+    },
+    "endpoint_allowlist": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "title": "Endpoint Allowlist",
+      "type": "array"
+    },
+    "hidden_reasoning_stored": {
+      "const": false,
+      "title": "Hidden Reasoning Stored",
+      "type": "boolean"
+    },
+    "manifest_hash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Manifest Hash",
+      "type": "string"
+    },
+    "manifest_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Manifest Id",
+      "type": "string"
+    },
+    "pricing_verifications": {
+      "items": {
+        "$ref": "#/$defs/Phase8PricingVerification"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "title": "Pricing Verifications",
+      "type": "array"
+    },
+    "prohibited": {
+      "$ref": "#/$defs/Phase8ProhibitedCapabilities"
+    },
+    "provider_retention_and_training_disabled_where_supported": {
+      "const": true,
+      "title": "Provider Retention And Training Disabled Where Supported",
+      "type": "boolean"
+    },
+    "raw_provider_responses_stored": {
+      "const": false,
+      "title": "Raw Provider Responses Stored",
+      "type": "boolean"
+    },
+    "stages": {
+      "items": {
+        "$ref": "#/$defs/Phase8StageAccess"
+      },
+      "maxItems": 6,
+      "minItems": 6,
+      "title": "Stages",
+      "type": "array"
+    },
+    "version_pins": {
+      "$ref": "#/$defs/Phase8VersionPins"
+    }
+  },
+  "required": [
+    "contract_version",
+    "manifest_id",
+    "cohort_id",
+    "cohort_hash",
+    "created_at",
+    "version_pins",
+    "stages",
+    "endpoint_allowlist",
+    "credentials",
+    "pricing_verifications",
+    "prohibited",
+    "provider_retention_and_training_disabled_where_supported",
+    "raw_provider_responses_stored",
+    "hidden_reasoning_stored",
+    "manifest_hash"
+  ],
+  "title": "Phase8AccessManifest",
+  "type": "object"
+}
