@@ -240,6 +240,11 @@ class ReviewPack(ABC):
     # ------------------------------------------------------------------- result
     @property
     @abstractmethod
+    def result_contract_version(self) -> str:
+        """``contract_version`` stamped on every result document of this pack."""
+
+    @property
+    @abstractmethod
     def result_schema_path(self) -> Path: ...
 
     @abstractmethod

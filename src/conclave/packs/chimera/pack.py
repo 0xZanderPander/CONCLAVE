@@ -221,6 +221,10 @@ class ChimeraPack(ReviewPack):
 
     # ------------------------------------------------------------------- result
     @property
+    def result_contract_version(self) -> str:
+        return "review-result/v1"
+
+    @property
     def result_schema_path(self) -> Path:
         return contracts_root() / "schemas" / "review-result.v1.schema.json"
 

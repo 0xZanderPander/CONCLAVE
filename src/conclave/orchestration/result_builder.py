@@ -213,7 +213,7 @@ def build_review_result(
     )
 
     document: dict[str, Any] = {
-        "contract_version": "review-result/v1",
+        "contract_version": pack.result_contract_version,
         "review_session_id": session.session_id,
         "request_idempotency_key": session.idempotency_key,
         "occurrence_id": session.occurrence_id,

@@ -112,3 +112,57 @@ def public_claim(claim: str | AssessmentClaim) -> dict[str, object]:
         "evidence_references": list(claim.evidence_references),
         "alternative_explanations": list(claim.alternative_explanations),
     }
+
+
+def snapshot_path_exists(document: object, reference: str) -> bool:
+    """True when a dotted path (``sections.evidence.metrics.cpa_usd``) resolves in the snapshot."""
+
+    from collections.abc import Mapping, Sequence
+
+    if not reference or reference.startswith(".") or reference.endswith("."):
+        return False
+    current = document
+    for segment in reference.split("."):
+        if not segment:
+            return False
+        if isinstance(current, Mapping):
+            if segment not in current:
+                return False
+            current = current[segment]
+            continue
+        if (
+            isinstance(current, Sequence)
+            and not isinstance(current, (str, bytes, bytearray))
+            and segment.isdigit()
+        ):
+            index = int(segment)
+            if index >= len(current):
+                return False
+            current = current[index]
+            continue
+        return False
+    return True
+
+
+def validate_evidence_references(
+    document: dict,
+    references: tuple[str, ...],
+    *,
+    label: str,
+    allowed_roots: frozenset[str],
+) -> None:
+    """Every evidence reference must point at an existing path under an allowed root."""
+
+    from conclave.contracts.errors import ContractValidationError
+
+    for reference in references:
+        root = reference.split(".", 1)[0]
+        if root not in allowed_roots:
+            raise ContractValidationError(
+                f"{label} evidence reference {reference!r} uses an unsupported root"
+            )
+        if not snapshot_path_exists(document, reference):
+            raise ContractValidationError(
+                f"{label} evidence reference {reference!r} does not exist "
+                "in the immutable snapshot"
+            )

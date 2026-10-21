@@ -5,7 +5,6 @@ Moved verbatim from ``conclave.task_packs.registry`` in B2.
 """
 
 import json
-from collections.abc import Mapping, Sequence
 from datetime import datetime
 from functools import lru_cache
 from typing import Any
@@ -21,8 +20,12 @@ from conclave.packs.chimera.models import (
     ReviewerCJudgment,
 )
 from conclave.packs.chimera.vocabulary import RecommendationCategory
-from conclave.packs.claims import AssessmentClaim
+from conclave.packs.claims import AssessmentClaim, validate_evidence_references
 from conclave.paths import contracts_root
+
+EVIDENCE_REFERENCE_ROOTS = frozenset(
+    {"sections", "quality", "materiality", "action_ontology", "allowed_recommendations"}
+)
 
 
 class TaskPackRegistry:
@@ -341,50 +344,12 @@ class TaskPackRegistry:
         *,
         label: str,
     ) -> None:
-        allowed_roots = {
-            "sections",
-            "quality",
-            "materiality",
-            "action_ontology",
-            "allowed_recommendations",
-        }
-        for reference in references:
-            root = reference.split(".", 1)[0]
-            if root not in allowed_roots:
-                raise ContractValidationError(
-                    f"{label} evidence reference {reference!r} uses an unsupported root"
-                )
-            if not TaskPackRegistry._snapshot_path_exists(document, reference):
-                raise ContractValidationError(
-                    f"{label} evidence reference {reference!r} does not exist "
-                    "in the immutable snapshot"
-                )
-
-    @staticmethod
-    def _snapshot_path_exists(document: object, reference: str) -> bool:
-        if not reference or reference.startswith(".") or reference.endswith("."):
-            return False
-        current = document
-        for segment in reference.split("."):
-            if not segment:
-                return False
-            if isinstance(current, Mapping):
-                if segment not in current:
-                    return False
-                current = current[segment]
-                continue
-            if (
-                isinstance(current, Sequence)
-                and not isinstance(current, (str, bytes, bytearray))
-                and segment.isdigit()
-            ):
-                index = int(segment)
-                if index >= len(current):
-                    return False
-                current = current[index]
-                continue
-            return False
-        return True
+        validate_evidence_references(
+            document,
+            references,
+            label=label,
+            allowed_roots=EVIDENCE_REFERENCE_ROOTS,
+        )
 
     def recommendation_materiality(
         self,

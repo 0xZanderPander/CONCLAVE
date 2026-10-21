@@ -64,6 +64,7 @@ class PackRegistry:
 
 @lru_cache(maxsize=1)
 def default_pack_registry() -> PackRegistry:
+    from conclave.packs.cerberus import cerberus_pack
     from conclave.packs.chimera import chimera_pack
 
-    return PackRegistry((chimera_pack(),), default_pack_id="chimera")
+    return PackRegistry((chimera_pack(), cerberus_pack()), default_pack_id="chimera")
