@@ -82,10 +82,16 @@ class Settings:
         if self.reviewer_runtime_mode == "gemini" and not self.google_api_key:
             raise ValueError("the Gemini reviewer runtime requires a Google API key")
         if self.reviewer_runtime_mode == "multi_provider" and (
-            not self.openai_api_key or not self.anthropic_api_key
+            sum(
+                1
+                for key in (self.openai_api_key, self.anthropic_api_key, self.google_api_key)
+                if key
+            )
+            < 2
         ):
             raise ValueError(
-                "the multi-provider reviewer runtime requires OpenAI and Anthropic API keys"
+                "the multi-provider reviewer runtime requires at least two of the "
+                "OpenAI, Anthropic and Google API keys"
             )
         if self.reviewer_runtime_mode == "phase8_pilot":
             if self.environment != "pilot":

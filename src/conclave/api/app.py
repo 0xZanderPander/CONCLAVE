@@ -18,7 +18,7 @@ from conclave.contracts.validation import ContractValidationError
 from conclave.database import create_database_engine, create_session_factory
 from conclave.evaluation.service import ReviewerEvaluationService
 from conclave.feedback import FeedbackIntakeService
-from conclave.fixtures import load_design_plan_revisions
+from conclave.fixtures import load_all_plan_revisions
 from conclave.intake import ReviewIntakeService
 from conclave.ledger.repository import (
     LedgerConflictError,
@@ -80,7 +80,7 @@ def create_app(
 
     repository = LedgerRepository(create_session_factory(engine))
     if seed_design_fixtures:
-        for revision in load_design_plan_revisions():
+        for revision in load_all_plan_revisions():
             repository.add_plan_revision(revision)
 
     intake = ReviewIntakeService(repository)

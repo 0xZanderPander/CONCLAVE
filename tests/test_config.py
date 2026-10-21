@@ -48,11 +48,17 @@ def test_production_reviewer_runtime_requires_an_explicit_provider() -> None:
     with pytest.raises(ValueError, match="Google API key"):
         Settings(reviewer_runtime_mode="gemini")
 
-    with pytest.raises(ValueError, match="OpenAI and Anthropic"):
+    with pytest.raises(ValueError, match="at least two"):
         Settings(
             reviewer_runtime_mode="multi_provider",
             openai_api_key="test-openai-key",
         )
+    # Any two of the three providers are enough; Google is no longer excluded.
+    Settings(
+        reviewer_runtime_mode="multi_provider",
+        anthropic_api_key="test-anthropic-key",
+        google_api_key="test-google-key",
+    )
 
 
 def test_reviewer_runtime_factory_never_silently_falls_back() -> None:
