@@ -6,11 +6,8 @@ from typing import Any
 
 from jsonschema import Draft7Validator, FormatChecker
 
+from conclave.contracts.errors import ContractValidationError
 from conclave.paths import contracts_root
-
-
-class ContractValidationError(ValueError):
-    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,9 +40,11 @@ def _validate_json(schema_path: Path, fixture_paths: list[Path]) -> None:
 def validate_review_request(
     document: dict[str, Any],
     root: Path | None = None,
+    *,
+    schema_path: Path | None = None,
 ) -> None:
     root = root or contracts_root()
-    schema = _load(root / "schemas" / "review-request.v1.schema.json")
+    schema = _load(schema_path or root / "schemas" / "review-request.v1.schema.json")
     Draft7Validator.check_schema(schema)
     validator = Draft7Validator(schema, format_checker=FormatChecker())
     errors = sorted(validator.iter_errors(document), key=lambda item: list(item.path))

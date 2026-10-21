@@ -3,6 +3,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
+from pydantic import BaseModel
+
 from conclave.domain.enums import (
     ReviewerSlot,
     ReviewStage,
@@ -16,32 +18,27 @@ from conclave.ledger.models import (
 )
 from conclave.ledger.repository import LedgerRepository
 from conclave.orchestration.result_builder import build_review_result
-from conclave.plans.models import ReviewPlanRevision, SlotSchedule
-from conclave.reviewers.runtime import (
-    Assessment,
-    AssessmentClaim,
-    CrossReviewResponse,
-    PeerAssessment,
-    PeerCrossReviewResponse,
-    ReviewCall,
-    ReviewerCJudgment,
-    ReviewerProviderExhaustedError,
-    ReviewerRuntime,
-    ReviewOutput,
-    assign_assessment_claim_ids,
-)
-from conclave.task_packs.comparison import (
+from conclave.packs.base import PackConfig, ReviewPack
+from conclave.packs.claims import AssessmentClaim, assign_assessment_claim_ids
+from conclave.packs.comparison import (
     ComparisonResult,
     ComparisonRound,
-    compare_assessments,
     comparison_trigger_labels,
     ordered_unique,
 )
-from conclave.task_packs.models import TaskPack
-from conclave.task_packs.registry import (
-    TaskPackRegistry,
-    default_task_pack_registry,
+from conclave.packs.registry import PackRegistry, default_pack_registry
+from conclave.plans.models import ReviewPlanRevision, SlotSchedule
+from conclave.reviewers.runtime import (
+    PeerAssessment,
+    PeerCrossReviewResponse,
+    ReviewCall,
+    ReviewerProviderExhaustedError,
+    ReviewerRuntime,
+    ReviewOutput,
 )
+
+Assessment = BaseModel
+ReviewerCJudgment = BaseModel
 
 
 class FixturePath(StrEnum):
@@ -60,11 +57,11 @@ class ReviewOrchestrator:
         self,
         repository: LedgerRepository,
         runtime: ReviewerRuntime,
-        task_packs: TaskPackRegistry | None = None,
+        packs: PackRegistry | None = None,
     ) -> None:
         self._repository = repository
         self._runtime = runtime
-        self._task_packs = task_packs or default_task_pack_registry()
+        self._packs = packs or default_pack_registry()
 
     def run(
         self,
@@ -82,7 +79,7 @@ class ReviewOrchestrator:
                         "completed session is missing its immutable result"
                     )
                 return state
-            task_pack = self._task_pack_for_session(session, snapshot)
+            pack, task_pack = self._pack_for_session(session, snapshot)
 
             if state == ReviewState.SNAPSHOTTED:
                 self._transition(session_id, ReviewState.REVIEWER_A)
@@ -111,6 +108,7 @@ class ReviewOrchestrator:
                     snapshot=snapshot.content,
                     assessment=a,
                     revision=revision,
+                    pack=pack,
                     task_pack=task_pack,
                 )
                 if expand:
@@ -120,6 +118,7 @@ class ReviewOrchestrator:
                     session_id,
                     snapshot,
                     revision,
+                    pack,
                     task_pack,
                 )
 
@@ -144,10 +143,10 @@ class ReviewOrchestrator:
                 b = self._completed_assessment(
                     session_id, ReviewerSlot.B, ReviewStage.INDEPENDENT, 1
                 )
-                comparison = compare_assessments(
+                comparison = pack.compare(
                     a,
                     b,
-                    task_pack,
+                    config=task_pack,
                     failed_goal=(
                         snapshot.content["review_trigger"]["kind"]
                         == TriggerKind.FAILED_GOAL.value
@@ -167,6 +166,7 @@ class ReviewOrchestrator:
                     session_id,
                     snapshot,
                     revision,
+                    pack,
                     task_pack,
                 )
 
@@ -177,10 +177,10 @@ class ReviewOrchestrator:
                 b = self._completed_assessment(
                     session_id, ReviewerSlot.B, ReviewStage.INDEPENDENT, 1
                 )
-                initial = compare_assessments(
+                initial = pack.compare(
                     a,
                     b,
-                    task_pack,
+                    config=task_pack,
                     failed_goal=(
                         snapshot.content["review_trigger"]["kind"]
                         == TriggerKind.FAILED_GOAL.value
@@ -243,7 +243,7 @@ class ReviewOrchestrator:
                     ),
                     comparison_history=(initial_context,),
                 )
-                comparison = compare_assessments(cross_a, cross_b, task_pack)
+                comparison = pack.compare(cross_a, cross_b, config=task_pack)
                 self._record_comparison(
                     session_id,
                     comparison,
@@ -258,6 +258,7 @@ class ReviewOrchestrator:
                     session_id,
                     snapshot,
                     revision,
+                    pack,
                     task_pack,
                 )
 
@@ -291,16 +292,16 @@ class ReviewOrchestrator:
                 initial_b = self._completed_assessment(
                     session_id, ReviewerSlot.B, ReviewStage.INDEPENDENT, 1
                 )
-                initial = compare_assessments(
+                initial = pack.compare(
                     initial_a,
                     initial_b,
-                    task_pack,
+                    config=task_pack,
                     failed_goal=(
                         snapshot.content["review_trigger"]["kind"]
                         == TriggerKind.FAILED_GOAL.value
                     ),
                 )
-                cross = compare_assessments(a, b, task_pack)
+                cross = pack.compare(a, b, config=task_pack)
                 self._invoke_judgment(
                     session_id=session_id,
                     snapshot_hash=snapshot.content_hash,
@@ -358,6 +359,7 @@ class ReviewOrchestrator:
                     session_id,
                     snapshot,
                     revision,
+                    pack,
                     task_pack,
                 )
 
@@ -370,6 +372,7 @@ class ReviewOrchestrator:
                     session_id,
                     snapshot,
                     revision,
+                    pack,
                     task_pack,
                 )
 
@@ -423,12 +426,12 @@ class ReviewOrchestrator:
             return self._finish(session_id, path, snapshot)
 
         self._transition(session_id, ReviewState.CROSS_REVIEW)
-        task_pack = self._task_pack_for_session(session, snapshot)
-        initial = compare_assessments(
-            a,
-            b,
-            task_pack,
-            failed_goal=(
+        pack, task_pack = self._pack_for_session(session, snapshot)
+        initial = pack.compare(
+                    a,
+                    b,
+                    config=task_pack,
+                    failed_goal=(
                 snapshot.content["review_trigger"]["kind"]
                 == TriggerKind.FAILED_GOAL.value
             ),
@@ -506,7 +509,7 @@ class ReviewOrchestrator:
             snapshot=snapshot.content,
         )
         self._transition(session_id, ReviewState.REVIEWER_C_JUDGING)
-        cross = compare_assessments(cross_a, cross_b, task_pack)
+        cross = pack.compare(cross_a, cross_b, config=task_pack)
         self._invoke_judgment(
             session_id=session_id,
             snapshot_hash=snapshot.content_hash,
@@ -597,16 +600,8 @@ class ReviewOrchestrator:
                 raise OrchestrationStateError(
                     f"completed invocation {invocation.invocation_id!r} has no output"
                 )
-            if stage == ReviewStage.JUDGING:
-                return ReviewerCJudgment.model_validate(invocation.assessment_payload)
-            if (
-                stage == ReviewStage.CROSS_REVIEW
-                and schema_version == "cross-review-v1"
-            ):
-                return CrossReviewResponse.model_validate(
-                    invocation.assessment_payload
-                )
-            return Assessment.model_validate(invocation.assessment_payload)
+            pack = self._packs.for_document(snapshot)
+            return pack.parse_output(stage, schema_version, invocation.assessment_payload)
         if invocation.status != "pending":
             raise OrchestrationStateError(
                 f"invocation {invocation.invocation_id!r} cannot resume from "
@@ -633,12 +628,14 @@ class ReviewOrchestrator:
             requested_at=now,
             provider_policy=assignment.provider_policy_for_stage(stage),
             attempt_number=invocation.attempt_count + 1,
+            task_pack_ref=snapshot["task_pack_ref"],
         )
         session = self._repository.get_session(session_id)
         snapshot_record = self._repository.get_snapshot(session_id)
         if session is None or snapshot_record is None:
             raise OrchestrationStateError("invocation session or snapshot is unavailable")
-        task_pack = self._task_pack_for_session(session, snapshot_record)
+        pack, task_pack = self._pack_for_session(session, snapshot_record)
+        kind = pack.output_kind(stage, schema_version)
         try:
             execution = self._runtime.review(call)
             self._repository.record_provider_attempts(
@@ -646,11 +643,11 @@ class ReviewOrchestrator:
                 attempts=execution.attempts,
             )
             output = execution.output
-            if stage == ReviewStage.JUDGING:
-                if not isinstance(output, ReviewerCJudgment):
+            if kind == "judgment":
+                if not isinstance(output, pack.judgment_type):
                     raise TypeError("reviewer C judging must return ReviewerCJudgment")
                 if (
-                    schema_version == "reviewer-c-judgment-v2"
+                    pack.assigns_claim_ids(schema_version)
                     and output.resolution_assessment is not None
                 ):
                     output = output.model_copy(
@@ -661,20 +658,16 @@ class ReviewOrchestrator:
                             )
                         }
                     )
-                output = self._task_packs.normalize_judgment(
+                output = pack.normalize_judgment(snapshot, output, config=task_pack)
+                pack.validate_judgment(
                     snapshot,
                     output,
-                    task_pack=task_pack,
-                )
-                self._task_packs.validate_judgment(
-                    snapshot,
-                    output,
-                    task_pack=task_pack,
+                    config=task_pack,
                     schema_version=schema_version,
                     available_claim_ids=self._available_judgment_claim_ids(call),
                 )
-            elif stage == ReviewStage.CROSS_REVIEW and schema_version == "cross-review-v1":
-                if not isinstance(output, CrossReviewResponse):
+            elif kind == "cross_review":
+                if not isinstance(output, pack.cross_review_type):
                     raise TypeError(
                         "cross-review-v1 returned a non-cross-review response"
                     )
@@ -682,37 +675,33 @@ class ReviewOrchestrator:
                     output.assessment,
                     invocation_id=invocation.invocation_id,
                 )
-                normalized_assessment = self._task_packs.normalize_assessment(
+                normalized_assessment = pack.normalize_assessment(
                     snapshot,
                     normalized_assessment,
-                    task_pack=task_pack,
+                    config=task_pack,
                 )
                 output = output.model_copy(
                     update={"assessment": normalized_assessment}
                 )
-                self._task_packs.validate_cross_review(
+                pack.validate_cross_review(
                     snapshot,
                     output,
                     peer_claim_ids=self._peer_claim_ids(call),
-                    task_pack=task_pack,
+                    config=task_pack,
                 )
             else:
-                if not isinstance(output, Assessment):
+                if not isinstance(output, pack.assessment_type):
                     raise TypeError("assessment stage returned a reviewer-C judgment")
-                if schema_version == "assessment-v2":
+                if pack.assigns_claim_ids(schema_version):
                     output = assign_assessment_claim_ids(
                         output,
                         invocation_id=invocation.invocation_id,
                     )
-                output = self._task_packs.normalize_assessment(
+                output = pack.normalize_assessment(snapshot, output, config=task_pack)
+                pack.validate_assessment(
                     snapshot,
                     output,
-                    task_pack=task_pack,
-                )
-                self._task_packs.validate_assessment(
-                    snapshot,
-                    output,
-                    task_pack=task_pack,
+                    config=task_pack,
                     schema_version=schema_version,
                 )
         except Exception as exc:
@@ -746,21 +735,24 @@ class ReviewOrchestrator:
 
     def _invoke_assessment(self, **kwargs: Any) -> Assessment:
         output = self._invoke(**kwargs)
-        if not isinstance(output, Assessment):
+        pack = self._packs.for_document(kwargs["snapshot"])
+        if not isinstance(output, pack.assessment_type):
             raise OrchestrationStateError("assessment invocation returned a judgment")
         return output
 
     def _invoke_cross_review(self, **kwargs: Any) -> Assessment:
         output = self._invoke(**kwargs)
-        if isinstance(output, CrossReviewResponse):
+        pack = self._packs.for_document(kwargs["snapshot"])
+        if isinstance(output, pack.cross_review_type):
             return output.assessment
-        if isinstance(output, Assessment):
+        if isinstance(output, pack.assessment_type):
             return output
         raise OrchestrationStateError("cross-review invocation returned a judgment")
 
     def _invoke_judgment(self, **kwargs: Any) -> ReviewerCJudgment:
         output = self._invoke(**kwargs)
-        if not isinstance(output, ReviewerCJudgment):
+        pack = self._packs.for_document(kwargs["snapshot"])
+        if not isinstance(output, pack.judgment_type):
             raise OrchestrationStateError("judging invocation returned an assessment")
         return output
 
@@ -804,7 +796,9 @@ class ReviewOrchestrator:
         session = self._repository.get_session(session_id)
         if session is None:
             raise LookupError(f"unknown review session {session_id!r}")
+        pack = self._packs.for_document(snapshot.content)
         document = build_review_result(
+            pack=pack,
             session=session,
             snapshot=snapshot,
             invocations=self._repository.list_invocations(session_id),
@@ -834,7 +828,8 @@ class ReviewOrchestrator:
         session_id: str,
         snapshot: RequestSnapshotRecord,
         revision: ReviewPlanRevision,
-        task_pack: TaskPack,
+        pack: ReviewPack,
+        task_pack: PackConfig,
     ) -> ReviewState:
         (
             path,
@@ -846,6 +841,7 @@ class ReviewOrchestrator:
             session_id=session_id,
             snapshot=snapshot,
             revision=revision,
+            pack=pack,
             task_pack=task_pack,
         )
         session = self._repository.get_session(session_id)
@@ -864,6 +860,7 @@ class ReviewOrchestrator:
         if session is None:
             raise LookupError(f"unknown review session {session_id!r}")
         document = build_review_result(
+            pack=pack,
             session=session,
             snapshot=snapshot,
             invocations=self._repository.list_invocations(session_id),
@@ -900,7 +897,8 @@ class ReviewOrchestrator:
         session_id: str,
         snapshot: RequestSnapshotRecord,
         revision: ReviewPlanRevision,
-        task_pack: TaskPack,
+        pack: ReviewPack,
+        task_pack: PackConfig,
     ) -> tuple[
         FixturePath,
         Assessment,
@@ -916,6 +914,7 @@ class ReviewOrchestrator:
             snapshot=snapshot.content,
             assessment=a,
             revision=revision,
+            pack=pack,
             task_pack=task_pack,
         )
         b_record = self._find_invocation(
@@ -926,11 +925,11 @@ class ReviewOrchestrator:
         b = self._completed_assessment(
             session_id, ReviewerSlot.B, ReviewStage.INDEPENDENT, 1
         )
-        initial = compare_assessments(
-            a,
-            b,
-            task_pack,
-            failed_goal=(
+        initial = pack.compare(
+                    a,
+                    b,
+                    config=task_pack,
+                    failed_goal=(
                 snapshot.content["review_trigger"]["kind"]
                 == TriggerKind.FAILED_GOAL.value
             ),
@@ -978,7 +977,7 @@ class ReviewOrchestrator:
         cross_b = self._completed_assessment(
             session_id, ReviewerSlot.B, ReviewStage.CROSS_REVIEW, 2
         )
-        cross = compare_assessments(cross_a, cross_b, task_pack)
+        cross = pack.compare(cross_a, cross_b, config=task_pack)
         self._record_comparison(
             session_id,
             cross,
@@ -1099,22 +1098,29 @@ class ReviewOrchestrator:
             ),
         )
 
-    def _task_pack_for_session(
+    def _pack_for_session(
         self,
         session: ReviewSessionRecord,
         snapshot: RequestSnapshotRecord,
-    ) -> TaskPack:
+    ) -> tuple[ReviewPack, PackConfig]:
+        pack = self._packs.for_document(snapshot.content)
         if session.task_pack_hash is None:
-            return self._task_packs.get(snapshot.content["task_pack_ref"])
+            return pack, pack.config
         record = self._repository.get_task_pack_revision(session.task_pack_hash)
         if record is None:
             raise OrchestrationStateError("session task-pack revision is unavailable")
-        task_pack = TaskPack.model_validate(record.document)
+        task_pack = pack.config_from_document(record.document)
         if task_pack.content_hash != session.task_pack_hash:
             raise OrchestrationStateError("pinned task-pack revision hash is invalid")
         if task_pack.task_pack_ref != snapshot.content["task_pack_ref"]:
             raise OrchestrationStateError("snapshot and pinned task pack do not match")
-        return task_pack
+        return pack, task_pack
+
+    def _pack_for_session_id(self, session_id: str) -> ReviewPack:
+        snapshot = self._repository.get_snapshot(session_id)
+        if snapshot is None:
+            raise OrchestrationStateError("session has no immutable snapshot")
+        return self._packs.for_document(snapshot.content)
 
     def _find_invocation(
         self,
@@ -1146,14 +1152,9 @@ class ReviewOrchestrator:
             raise OrchestrationStateError(
                 f"missing completed {slot.value} {stage.value} round {round_number} assessment"
             )
-        if (
-            stage == ReviewStage.CROSS_REVIEW
-            and record.schema_version == "cross-review-v1"
-        ):
-            return CrossReviewResponse.model_validate(
-                record.assessment_payload
-            ).assessment
-        return Assessment.model_validate(record.assessment_payload)
+        pack = self._pack_for_session_id(session_id)
+        output = pack.parse_output(stage, record.schema_version, record.assessment_payload)
+        return pack.assessment_from_output(output)
 
     def _completed_cross_review_response(
         self,
@@ -1166,19 +1167,23 @@ class ReviewOrchestrator:
             ReviewStage.CROSS_REVIEW,
             2,
         )
+        pack = self._pack_for_session_id(session_id)
         if (
             record is None
             or record.status != "completed"
             or record.assessment_payload is None
-            or record.schema_version != "cross-review-v1"
+            or pack.output_kind(ReviewStage.CROSS_REVIEW, record.schema_version)
+            != "cross_review"
         ):
             raise OrchestrationStateError(
                 f"missing completed {slot.value} cross-review-v1 response"
             )
         return PeerCrossReviewResponse(
             slot=slot,
-            response=CrossReviewResponse.model_validate(
-                record.assessment_payload
+            response=pack.parse_output(
+                ReviewStage.CROSS_REVIEW,
+                record.schema_version,
+                record.assessment_payload,
             ),
         )
 
@@ -1190,7 +1195,8 @@ class ReviewOrchestrator:
         _role, _prompt, schema = revision.slots[
             ReviewerSlot.C
         ].contract_for_stage(ReviewStage.JUDGING)
-        if schema != "reviewer-c-judgment-v2":
+        pack = self._pack_for_session_id(session_id)
+        if not pack.judgment_consumes_cross_review_responses(schema):
             return ()
         return (
             self._completed_cross_review_response(session_id, ReviewerSlot.A),
@@ -1203,7 +1209,10 @@ class ReviewOrchestrator:
         )
         if record is None or record.status != "completed" or record.assessment_payload is None:
             raise OrchestrationStateError("missing completed reviewer-C judgment")
-        return ReviewerCJudgment.model_validate(record.assessment_payload)
+        pack = self._pack_for_session_id(session_id)
+        return pack.parse_output(
+            ReviewStage.JUDGING, record.schema_version, record.assessment_payload
+        )
 
     def _find_revision(
         self,
@@ -1229,7 +1238,8 @@ class ReviewOrchestrator:
         snapshot: dict[str, Any],
         assessment: Assessment,
         revision: ReviewPlanRevision,
-        task_pack: TaskPack,
+        pack: ReviewPack,
+        task_pack: PackConfig,
     ) -> tuple[bool, tuple[str, ...]]:
         kind = TriggerKind(snapshot["review_trigger"]["kind"])
         triggers: list[str] = []
@@ -1238,14 +1248,7 @@ class ReviewOrchestrator:
         if kind == TriggerKind.FAILED_GOAL and revision.panel_expansion.invoke_b_on_failed_goal:
             triggers.append("failed_goal")
         request_material = self._request_materiality(session_id)
-        recommendation_material = bool(
-            assessment.category in task_pack.material_recommendation_categories
-            or assessment.risk in task_pack.material_risk_levels
-            or any(
-                action.type in task_pack.material_action_types
-                for action in assessment.actions
-            )
-        )
+        recommendation_material = pack.recommendation_material(assessment, config=task_pack)
         if (
             request_material
             and revision.panel_expansion.invoke_b_on_request_material
@@ -1283,7 +1286,7 @@ class ReviewOrchestrator:
         *,
         stage: ReviewStage,
         round_number: int,
-        task_pack: TaskPack,
+        task_pack: PackConfig,
     ) -> None:
         left_slot, right_slot = (
             (ReviewerSlot.A, ReviewerSlot.B)
@@ -1301,11 +1304,8 @@ class ReviewOrchestrator:
             distance=comparison.distance,
             weighted_distance=comparison.weighted_distance,
             tolerance=comparison.tolerance,
-            dimension_distances={
-                dimension.value: value
-                for dimension, value in comparison.dimension_distances.items()
-            },
-            hard_triggers=tuple(trigger.value for trigger in comparison.hard_triggers),
+            dimension_distances=dict(comparison.dimension_distances),
+            hard_triggers=tuple(comparison.hard_triggers),
             requires_cross_review=comparison.requires_cross_review,
             merge_compatible=comparison.merge_compatible,
             left_invocation_id=left.invocation_id,

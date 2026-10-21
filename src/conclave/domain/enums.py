@@ -54,17 +54,13 @@ class TriggerKind(StrEnum):
     MANUAL = "manual"
 
 
-class RecommendationCategory(StrEnum):
-    OBSERVE = "observe"
-    COLLECT_MORE_DATA = "collect_more_data"
-    EXPERIMENT = "experiment"
-    OPERATIONAL_CHANGE = "operational_change"
-    TRACKING_OR_DATA_PROBLEM = "tracking_or_data_problem"
-    FREEZE = "freeze"
-
-
 class ResultStatus(StrEnum):
     AUTO_RESOLVED = "auto_resolved"
     CALLER_DECISION_REQUIRED = "caller_decision_required"
     STALE_OR_INELIGIBLE_EVIDENCE = "stale_or_ineligible_evidence"
     FAILED = "failed"
+
+
+# Chimera's recommendation vocabulary, re-exported for import compatibility.
+# Imported last so the pack modules can import the engine enums above.
+from conclave.packs.chimera.vocabulary import RecommendationCategory  # noqa: E402,F401

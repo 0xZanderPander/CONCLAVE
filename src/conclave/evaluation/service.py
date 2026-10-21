@@ -1,6 +1,6 @@
 from typing import Any
 
-from conclave.domain.enums import ReviewState
+from conclave.domain.enums import ReviewStage, ReviewState
 from conclave.evaluation.models import (
     AssessmentFingerprint,
     DirectionalEvaluationMetrics,
@@ -9,57 +9,7 @@ from conclave.evaluation.models import (
     ReviewerEvaluationCandidate,
 )
 from conclave.ledger.repository import LedgerRepository, canonical_hash
-from conclave.reviewers.runtime import Assessment, AssessmentClaim
-
-
-def _public_claim(claim: str | AssessmentClaim) -> dict[str, Any]:
-    if isinstance(claim, str):
-        return {
-            "statement": claim,
-            "evidence_references": [],
-            "alternative_explanations": [],
-        }
-    return {
-        "statement": claim.statement,
-        "evidence_references": list(claim.evidence_references),
-        "alternative_explanations": list(claim.alternative_explanations),
-    }
-
-
-def _baseline_projection(assessment: Assessment) -> dict[str, Any]:
-    return {
-        "recommendation": {
-            "category": assessment.category.value,
-            "summary": assessment.summary,
-            "actions": [
-                action.model_dump(mode="json", exclude_none=False)
-                for action in assessment.actions
-            ],
-            "experiment": (
-                assessment.experiment.model_dump(mode="json")
-                if assessment.experiment is not None
-                else None
-            ),
-        },
-        "claims": [_public_claim(claim) for claim in assessment.claims],
-        "confidence": assessment.confidence,
-        "evidence_quality": assessment.evidence_quality,
-        "risk": assessment.risk,
-        "missing_evidence": list(assessment.missing_evidence),
-        "review_after_hours": assessment.review_after_hours,
-    }
-
-
-def _final_projection(result: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "recommendation": result["recommendation"],
-        "claims": result["claims"],
-        "confidence": result["confidence"],
-        "evidence_quality": result["evidence_quality"],
-        "risk": result["risk"],
-        "missing_evidence": result.get("missing_evidence", []),
-        "review_after_hours": result.get("review_after_hours"),
-    }
+from conclave.packs.registry import PackRegistry, default_pack_registry
 
 
 def _claim_identity(claim: dict[str, Any]) -> str:
@@ -72,8 +22,13 @@ def _claim_identity(claim: dict[str, Any]) -> str:
 
 
 class ReviewerEvaluationService:
-    def __init__(self, repository: LedgerRepository) -> None:
+    def __init__(
+        self,
+        repository: LedgerRepository,
+        packs: PackRegistry | None = None,
+    ) -> None:
         self._repository = repository
+        self._packs = packs or default_pack_registry()
 
     def evaluate(self, session_id: str) -> EvaluationAcceptance:
         session = self._repository.get_session(session_id)
@@ -96,10 +51,20 @@ class ReviewerEvaluationService:
         )
         if baseline_record is None or baseline_record.assessment_payload is None:
             raise LookupError("review evaluation requires Reviewer A's baseline")
-        baseline = Assessment.model_validate(baseline_record.assessment_payload)
+        snapshot = self._repository.get_snapshot(session_id)
+        if snapshot is None:
+            raise LookupError("review evaluation requires the request snapshot")
+        pack = self._packs.for_document(snapshot.content)
+        baseline = pack.assessment_from_output(
+            pack.parse_output(
+                ReviewStage.INDEPENDENT,
+                baseline_record.schema_version,
+                baseline_record.assessment_payload,
+            )
+        )
 
-        baseline_projection = _baseline_projection(baseline)
-        final_projection = _final_projection(result.document)
+        baseline_projection = pack.assessment_projection(baseline)
+        final_projection = pack.result_projection(result.document)
         baseline_hash = canonical_hash(baseline_projection)
         final_hash = canonical_hash(final_projection)
         baseline_claims = {
@@ -125,7 +90,7 @@ class ReviewerEvaluationService:
             interpretation="directional_only",
             baseline=AssessmentFingerprint(
                 assessment_hash=baseline_hash,
-                category=baseline.category.value,
+                category=str(baseline.category),
             ),
             final=AssessmentFingerprint(
                 assessment_hash=final_hash,
@@ -134,7 +99,7 @@ class ReviewerEvaluationService:
             indicators=DirectionalIndicators(
                 panel_changed=baseline_hash != final_hash,
                 category_changed=(
-                    baseline.category.value
+                    str(baseline.category)
                     != result.document["recommendation"]["category"]
                 ),
                 caller_preference=feedback.panel_preference,
