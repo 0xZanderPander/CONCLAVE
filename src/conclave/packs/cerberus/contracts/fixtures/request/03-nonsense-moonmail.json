@@ -1,0 +1,90 @@
+{
+  "contract_version": "venture-submission/v1",
+  "caller": {
+    "caller_id": "vorago",
+    "auth_subject": "vorago-assessment-service"
+  },
+  "subject": {
+    "submission_id": "sub_moonmail_01",
+    "founder_ref": "founder_l_01"
+  },
+  "idempotency_key": "vorago:sub_moonmail_01:v1",
+  "evidence_version": "sub_moonmail_01:v1",
+  "review_trigger": {
+    "occurrence_id": "occ_sub_moonmail_01",
+    "kind": "manual",
+    "due_at": "2026-10-21T21:25:00Z"
+  },
+  "classification": {
+    "evidence": [
+      "sections.evidence"
+    ],
+    "context": [
+      "sections.context"
+    ],
+    "policy": [
+      "sections.policy"
+    ],
+    "goal": [
+      "sections.goal"
+    ],
+    "quality": [
+      "quality"
+    ]
+  },
+  "sections": {
+    "evidence": {
+      "title": "Moonmail — postcards from the Moon",
+      "problem": "People wish they could get mail from the Moon but they can't because nobody lives there.",
+      "solution": "We set up a PO box in Moon, Pennsylvania. You write a postcard to yourself, we mail it to the Moon PO box, then mail it back to you with a Moon postmark. Subscription is 29 dollars a month and you get one postcard a month from the Moon.",
+      "market": "Everyone. There are 8 billion people and all of them would like mail from the Moon. If 1 percent subscribe that is 80 million customers paying 29 dollars a month.",
+      "business_model": "29 dollars a month subscription. Postage costs about 1.50 so the rest is profit.",
+      "traction": "I told my roommate and he said it was funny.",
+      "competition": "NASA does not do this. Nobody does this.",
+      "team": "Just me. I have never run a business but I am very motivated and I own a printer.",
+      "risks": "The post office might not let us call it the Moon. Also the Moon PO box might fill up.",
+      "ask": "How fast can this get to a billion dollar valuation?"
+    },
+    "context": {
+      "stage": "idea",
+      "submitted_at": "2026-10-21T21:11:00Z",
+      "geography": "US",
+      "sector": "consumer"
+    },
+    "policy": {
+      "rubric_version": "venture-rubric/v1",
+      "max_feedback_words": 600,
+      "token_budget": 120000
+    },
+    "goal": {
+      "decision": "viability_assessment",
+      "founder_question": "How fast can this get to a billion dollar valuation?"
+    }
+  },
+  "quality": {
+    "total_words": 180,
+    "fields_present": 10,
+    "fields_total": 10,
+    "language": "en",
+    "gate": {
+      "passed": true,
+      "reason": null
+    }
+  },
+  "allowed_recommendations": [
+    "viable",
+    "not_viable",
+    "needs_revision",
+    "insufficient_information"
+  ],
+  "materiality": {
+    "always_material": true
+  },
+  "comparator": {
+    "profile": "venture-submission/v1",
+    "tolerance": 0.25
+  },
+  "task_pack_ref": "venture-submission/v1",
+  "review_plan_ref": "rp_vorago_venture",
+  "review_plan_revision": 1
+}

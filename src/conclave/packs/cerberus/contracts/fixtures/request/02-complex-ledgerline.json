@@ -1,0 +1,90 @@
+{
+  "contract_version": "venture-submission/v1",
+  "caller": {
+    "caller_id": "vorago",
+    "auth_subject": "vorago-assessment-service"
+  },
+  "subject": {
+    "submission_id": "sub_ledgerline_01",
+    "founder_ref": "founder_e_01"
+  },
+  "idempotency_key": "vorago:sub_ledgerline_01:v1",
+  "evidence_version": "sub_ledgerline_01:v1",
+  "review_trigger": {
+    "occurrence_id": "occ_sub_ledgerline_01",
+    "kind": "manual",
+    "due_at": "2026-10-21T21:20:00Z"
+  },
+  "classification": {
+    "evidence": [
+      "sections.evidence"
+    ],
+    "context": [
+      "sections.context"
+    ],
+    "policy": [
+      "sections.policy"
+    ],
+    "goal": [
+      "sections.goal"
+    ],
+    "quality": [
+      "quality"
+    ]
+  },
+  "sections": {
+    "evidence": {
+      "title": "Ledgerline — cross-border payroll and settlement rail for touring musicians and crews",
+      "problem": "A touring act playing twelve dates across Texas and Mexico gets paid twelve different ways: cash at the door, a promoter wire two weeks late, a venue check in the wrong currency, a festival settlement sheet nobody can read. Performers and crew carry the float, lose 4 to 9 percent to FX and wire fees, and face a year-end tax mess across two or more jurisdictions. Tour managers spend a day a week chasing settlements instead of running the tour.",
+      "solution": "Ledgerline sits between the promoter and the act. The promoter funds an escrow per confirmed date. On settlement the platform releases to each performer and crew member in their home currency within 24 hours, applies per-jurisdiction withholding, and at year end issues the right forms (1099 or Mexican constancia) automatically. Acts with confirmed dates can draw an advance of up to 60 percent of guaranteed fees at a fixed fee, repaid from settlement. Promoters get one dashboard and one wire per tour instead of one per show.",
+      "market": "Roughly 40,000 professional touring acts in North America play 15 or more paid dates a year; mid-tier acts gross 200k to 2M per year, and the live sector moves about 30B in artist and crew payments annually. Our initial segment is 2,000 to 3,000 acts touring the Texas to Mexico corridor, where cross-currency settlement is the norm and nobody serves it.",
+      "business_model": "1.5 percent of settled volume paid by the promoter, split-FX margin of 40 to 60 basis points, and a 3 to 5 percent flat fee on advances. A mid-tier act grossing 600k a year yields about 12k in platform revenue. Target 60 percent gross margin after payment-rail and compliance costs.",
+      "traction": "Working prototype that runs escrow, split settlement and withholding on a sandbox payment provider. Three promoters in Austin, Monterrey and San Antonio have signed paid pilot agreements covering 41 dates in Q1. Pre-revenue; pilots start in January.",
+      "competition": "Generic payroll providers (Gusto, Deel) do not understand show settlements or per-date escrow. Payment platforms (Stripe Connect, Wise Business) are rails, not products, and leave compliance to the act. Tour accounting firms do this manually for the top 5 percent of acts at prices mid-tier acts cannot afford. Band-payment apps (Splitwise-style) handle division but not cross-border compliance or advances.",
+      "team": "Two founders. One spent eight years as a compliance lead at a licensed cross-border remittance company and has filed money-transmitter applications in four states. The other has tour-managed 300 plus shows across the US and Mexico and runs a small booking agency. One contract engineer built the prototype; a full-time hire is planned post-raise.",
+      "risks": "Money-transmission licensing across US states and Mexico CNBV registration is slow and expensive; we plan to operate under a sponsor-bank program first. Advances expose us to promoter default and show cancellation; we limit advances to confirmed dates with deposits in escrow. Chargeback and fraud risk on promoter funding. Two-sided adoption: promoters must fund escrow earlier than they are used to. Concentration risk in one corridor.",
+      "ask": "We want to know whether this is a venture-scale business or a profitable niche tool, and which of our risks the panel believes is fatal."
+    },
+    "context": {
+      "stage": "prototype",
+      "submitted_at": "2026-10-21T21:10:00Z",
+      "geography": "Texas / Mexico, US",
+      "sector": "music / fintech"
+    },
+    "policy": {
+      "rubric_version": "venture-rubric/v1",
+      "max_feedback_words": 600,
+      "token_budget": 120000
+    },
+    "goal": {
+      "decision": "viability_assessment",
+      "founder_question": "Is this a venture-scale business or a niche tool, and which risk is fatal?"
+    }
+  },
+  "quality": {
+    "total_words": 530,
+    "fields_present": 10,
+    "fields_total": 10,
+    "language": "en",
+    "gate": {
+      "passed": true,
+      "reason": null
+    }
+  },
+  "allowed_recommendations": [
+    "viable",
+    "not_viable",
+    "needs_revision",
+    "insufficient_information"
+  ],
+  "materiality": {
+    "always_material": true
+  },
+  "comparator": {
+    "profile": "venture-submission/v1",
+    "tolerance": 0.25
+  },
+  "task_pack_ref": "venture-submission/v1",
+  "review_plan_ref": "rp_vorago_venture",
+  "review_plan_revision": 1
+}
