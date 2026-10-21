@@ -49,11 +49,12 @@ def _merged_assessment(left: VentureAssessment, right: VentureAssessment) -> Ven
         if left.summary.strip() == right.summary.strip()
         else f"{left.summary.rstrip()} {right.summary.lstrip()}"
     )
-    feedback = (
-        left.feedback
-        if left.feedback.strip() == right.feedback.strip()
-        else f"{left.feedback.rstrip()}\n\n{right.feedback.lstrip()}"
-    )
+    # Feedback is never concatenated: two valid responses could together exceed
+    # the caller's word cap and the merged result is not re-validated. The seat
+    # whose (more cautious) verdict carries the merge also carries its feedback;
+    # on a tie, A's. The other seat's weaknesses and missing evidence are kept.
+    cautious = left if CAUTION_ORDER[left.category] <= CAUTION_ORDER[right.category] else right
+    feedback = cautious.feedback
     return left.model_copy(
         update={
             "category": category,

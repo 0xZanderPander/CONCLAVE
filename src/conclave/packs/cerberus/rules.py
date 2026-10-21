@@ -108,6 +108,15 @@ def evaluate_eligibility(
     )
 
 
+def feedback_word_limit(config: VenturePackConfig, document: dict[str, Any]) -> int:
+    """The tighter of the pack ceiling and the caller's declared policy limit."""
+
+    declared = document["sections"]["policy"].get("max_feedback_words")
+    if isinstance(declared, bool) or not isinstance(declared, int) or declared < 1:
+        return config.max_feedback_words
+    return min(config.max_feedback_words, declared)
+
+
 def normalize_assessment(assessment: VentureAssessment) -> VentureAssessment:
     return assessment.model_copy(update={"material": True})
 
@@ -159,10 +168,9 @@ def validate_assessment(
         )
     if not assessment.material:
         raise ContractValidationError("venture assessments are always material")
-    if _word_count(assessment.feedback) > config.max_feedback_words:
-        raise ContractValidationError(
-            f"feedback exceeds {config.max_feedback_words} words"
-        )
+    limit = feedback_word_limit(config, document)
+    if _word_count(assessment.feedback) > limit:
+        raise ContractValidationError(f"feedback exceeds {limit} words")
     if assessment.category == VentureVerdict.VIABLE and assessment.evidence_quality in {
         "insufficient",
     }:

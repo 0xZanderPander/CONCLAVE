@@ -407,3 +407,40 @@ def test_every_pack_contract_survives_each_provider_schema_transform(provider_mo
     )
     for contract in (*CERBERUS.values(), *CHIMERA.values()):
         json.dumps(transform(contract.output_model.model_json_schema()))
+
+
+def test_merged_feedback_never_exceeds_the_cap() -> None:
+    long = " ".join(["word"] * 400)
+    left = _assessment("needs_revision").model_copy(update={"feedback": long + " A"})
+    right = _assessment("needs_revision").model_copy(update={"feedback": long + " B"})
+    result = compare_venture_assessments(left, right, default_config())
+    merged = result.merged_assessment
+    assert len(merged.feedback.split()) <= default_config().max_feedback_words
+    assert merged.feedback == left.feedback  # tie on caution -> A carries the feedback
+    cautious = compare_venture_assessments(
+        _assessment("viable").model_copy(update={"feedback": "optimistic"}),
+        _assessment("needs_revision").model_copy(update={"feedback": "cautious"}),
+        default_config(),
+    )
+    assert cautious.merged_assessment is None or cautious.merged_assessment.feedback == "cautious"
+
+
+def test_caller_declared_feedback_limit_is_enforced() -> None:
+    from conclave.packs.cerberus import rules
+
+    document = deepcopy(load_request_fixture())
+    document["sections"]["policy"]["max_feedback_words"] = 60
+    assessment = _assessment("needs_revision").model_copy(
+        update={"feedback": " ".join(["word"] * 61)}
+    )
+    engine, repository = _repository_with_plan()
+    try:
+        accepted = ReviewIntakeService(repository).accept(document)
+        runtime = FakeReviewerRuntime({(ReviewerSlot.A, ReviewStage.INDEPENDENT, 1): assessment})
+        with pytest.raises(ContractValidationError, match="exceeds 60 words"):
+            ReviewOrchestrator(repository, runtime).run(accepted.session_id, now=_NOW)
+    finally:
+        engine.dispose()
+    assert rules.feedback_word_limit(default_config(), document) == 60
+    document["sections"]["policy"]["max_feedback_words"] = 5000
+    assert rules.feedback_word_limit(default_config(), document) == 600
