@@ -444,3 +444,25 @@ def test_caller_declared_feedback_limit_is_enforced() -> None:
     assert rules.feedback_word_limit(default_config(), document) == 60
     document["sections"]["policy"]["max_feedback_words"] = 5000
     assert rules.feedback_word_limit(default_config(), document) == 600
+
+
+def test_current_plan_revision_matches_the_approved_contract_table() -> None:
+    """The latest VORAGO plan revision must pin exactly the prompt versions the pack approves."""
+
+    from conclave.packs.cerberus.contracts import CONTRACTS
+
+    revision = max(load_cerberus_plan_revisions(), key=lambda item: item.revision)
+    pack = default_pack_registry().by_id("cerberus")
+    for slot, schedule in revision.slots.items():
+        for stage in (ReviewStage.INDEPENDENT, ReviewStage.CROSS_REVIEW, ReviewStage.JUDGING):
+            if stage == ReviewStage.JUDGING and slot != ReviewerSlot.C:
+                continue
+            if stage == ReviewStage.CROSS_REVIEW and slot == ReviewerSlot.C:
+                continue
+            role, prompt, schema = schedule.contract_for_stage(stage)
+            contract = pack.provider_contract(slot, stage, schema)
+            assert (role, prompt) == (contract.role_version, contract.prompt_version), (slot, stage)
+            assert schedule.provider_policy_for_stage(stage).max_output_tokens >= (
+                8000 if stage != ReviewStage.INDEPENDENT else 4000
+            )
+    assert len(CONTRACTS) == 6
