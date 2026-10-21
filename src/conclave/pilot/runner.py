@@ -334,10 +334,80 @@ def _terminal_audit_verified(
     return reconstructed.value == final_state
 
 
+def capture_ledger_state(
+    repository: LedgerRepository,
+    *,
+    session_id: str,
+) -> dict[str, Any]:
+    """Serialize everything the ledger holds for one session.
+
+    Used by the chimera conformance oracle: the engine generalization must
+    reproduce this capture byte-for-byte for every Phase 7 case.
+    """
+
+    session = repository.get_session(session_id)
+    if session is None:
+        raise RuntimeError("captured session disappeared")
+    result = repository.get_result(session_id)
+    invocations = [
+        {
+            "invocation_id": item.invocation_id,
+            "reviewer_slot": item.reviewer_slot,
+            "reviewer_type": item.reviewer_type,
+            "stage": item.stage,
+            "round": item.round,
+            "snapshot_hash": item.snapshot_hash,
+            "provider": item.provider,
+            "model": item.model,
+            "prompt_version": item.prompt_version,
+            "schema_version": item.schema_version,
+            "status": item.status,
+            "assessment_payload": item.assessment_payload,
+            "attempt_count": item.attempt_count,
+            "total_tokens": item.total_tokens,
+            "latency_ms": item.latency_ms,
+            "cost_usd": item.cost_usd,
+            "last_error": item.last_error,
+        }
+        for item in repository.list_invocations(session_id)
+    ]
+    events = [
+        {
+            "event_type": event.event_type.value,
+            "sequence": event.sequence,
+            "stage": event.stage.value if event.stage is not None else None,
+            "round": event.round_number,
+            "summary": event.summary,
+            "payload": event.payload,
+        }
+        for event in repository.list_events(session_id)
+    ]
+    audit_events = [
+        {
+            "event_type": event.event_type,
+            "event_index": event.event_index,
+            "event_payload": event.event_payload,
+        }
+        for event in repository.audit_events("review_session", session_id)
+    ]
+    return {
+        "session_id": session_id,
+        "final_state": session.current_state,
+        "task_pack_hash": session.task_pack_hash,
+        "result_path": result.path if result is not None else None,
+        "result_hash": result.result_hash if result is not None else None,
+        "result_document": result.document if result is not None else None,
+        "invocations": invocations,
+        "events": events,
+        "audit_events": audit_events,
+    }
+
+
 def run_phase7_pilot(
     *,
     dataset: Phase7PilotDataset | None = None,
     output_dir: Path | None = None,
+    ledger_capture: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     dataset = dataset or load_phase7_pilot_dataset()
     engine, repository = _repository()
@@ -447,6 +517,11 @@ def run_phase7_pilot(
                 8,
             )
             final_state = session.current_state
+            if ledger_capture is not None:
+                ledger_capture[case.case_id] = capture_ledger_state(
+                    repository,
+                    session_id=accepted.session_id,
+                )
             expected_pass = _case_passed(
                 case,
                 final_state=final_state,

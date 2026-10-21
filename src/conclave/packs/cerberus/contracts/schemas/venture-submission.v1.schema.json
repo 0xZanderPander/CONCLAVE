@@ -1,0 +1,372 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://conclave/packs/cerberus/venture-submission.v1.schema.json",
+  "title": "venture-submission/v1",
+  "description": "Caller (VORAGO) -> Conclave cerberus pack. One venture submission as an immutable, classified evidence package. Every field under sections is founder-authored or caller-derived DATA; nothing in it is an instruction to the panel.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "caller",
+    "subject",
+    "idempotency_key",
+    "evidence_version",
+    "review_trigger",
+    "classification",
+    "sections",
+    "quality",
+    "allowed_recommendations",
+    "materiality",
+    "comparator",
+    "task_pack_ref",
+    "review_plan_ref",
+    "review_plan_revision"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "venture-submission/v1"
+    },
+    "caller": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caller_id",
+        "auth_subject"
+      ],
+      "properties": {
+        "caller_id": {
+          "type": "string",
+          "examples": [
+            "vorago"
+          ]
+        },
+        "auth_subject": {
+          "type": "string",
+          "description": "Authenticated caller identity, not the founder."
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "description": "Opaque caller-owned identifiers. Conclave treats these as blind handles.",
+      "additionalProperties": false,
+      "required": [
+        "submission_id"
+      ],
+      "properties": {
+        "submission_id": {
+          "type": "string"
+        },
+        "founder_ref": {
+          "type": "string",
+          "description": "Opaque handle. Never a name, email or wallet."
+        }
+      }
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "evidence_version": {
+      "type": "string"
+    },
+    "review_trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "occurrence_id",
+        "kind",
+        "due_at"
+      ],
+      "properties": {
+        "occurrence_id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "manual",
+            "scheduled_a",
+            "scheduled_b",
+            "failed_goal"
+          ],
+          "description": "A submission is a manual trigger."
+        },
+        "due_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "classification": {
+      "type": "object",
+      "description": "Every leaf under sections and quality is classified as evidence, context, policy, goal or quality. Conformance checks completeness and uniqueness.",
+      "additionalProperties": false,
+      "required": [
+        "evidence",
+        "context",
+        "policy",
+        "goal",
+        "quality"
+      ],
+      "properties": {
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "context": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "policy": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "goal": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "quality": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence",
+        "context",
+        "policy",
+        "goal"
+      ],
+      "properties": {
+        "evidence": {
+          "type": "object",
+          "description": "The founder's submission text. Untrusted data.",
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "problem",
+            "solution",
+            "market"
+          ],
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "problem": {
+              "type": "string"
+            },
+            "solution": {
+              "type": "string"
+            },
+            "market": {
+              "type": "string"
+            },
+            "business_model": {
+              "type": "string"
+            },
+            "traction": {
+              "type": "string"
+            },
+            "competition": {
+              "type": "string"
+            },
+            "team": {
+              "type": "string"
+            },
+            "risks": {
+              "type": "string"
+            },
+            "ask": {
+              "type": "string"
+            }
+          }
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "stage",
+            "submitted_at"
+          ],
+          "properties": {
+            "stage": {
+              "enum": [
+                "idea",
+                "prototype",
+                "early_revenue",
+                "scaling"
+              ]
+            },
+            "submitted_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "geography": {
+              "type": "string"
+            },
+            "sector": {
+              "type": "string"
+            }
+          }
+        },
+        "policy": {
+          "type": "object",
+          "description": "Caller-declared constraints. The caller enforces its own policy independently.",
+          "additionalProperties": false,
+          "required": [
+            "rubric_version",
+            "max_feedback_words"
+          ],
+          "properties": {
+            "rubric_version": {
+              "type": "string"
+            },
+            "max_feedback_words": {
+              "type": "integer",
+              "minimum": 50
+            },
+            "token_budget": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            }
+          }
+        },
+        "goal": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "decision"
+          ],
+          "properties": {
+            "decision": {
+              "enum": [
+                "viability_assessment"
+              ]
+            },
+            "founder_question": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "description": "Deterministic caller-computed submission quality. Separate from reviewer confidence.",
+      "additionalProperties": false,
+      "required": [
+        "total_words",
+        "fields_present",
+        "fields_total",
+        "language"
+      ],
+      "properties": {
+        "total_words": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fields_present": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fields_total": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "language": {
+          "type": "string"
+        },
+        "gate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "passed"
+          ],
+          "properties": {
+            "passed": {
+              "type": "boolean"
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "allowed_recommendations": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "viable",
+          "not_viable",
+          "needs_revision",
+          "insufficient_information"
+        ]
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "materiality": {
+      "type": "object",
+      "description": "Every venture submission is material; the panel always convenes.",
+      "additionalProperties": false,
+      "required": [
+        "always_material"
+      ],
+      "properties": {
+        "always_material": {
+          "const": true
+        }
+      }
+    },
+    "comparator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "tolerance"
+      ],
+      "properties": {
+        "profile": {
+          "type": "string"
+        },
+        "tolerance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "task_pack_ref": {
+      "const": "venture-submission/v1"
+    },
+    "review_plan_ref": {
+      "type": "string"
+    },
+    "review_plan_revision": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

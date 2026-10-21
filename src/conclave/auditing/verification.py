@@ -1,10 +1,7 @@
 import hashlib
 from dataclasses import dataclass
 
-from conclave.contracts.validation import (
-    validate_review_feedback,
-    validate_review_result,
-)
+from conclave.contracts.validation import validate_review_feedback
 from conclave.domain.enums import (
     ReviewerSlot,
     ReviewStage,
@@ -18,9 +15,8 @@ from conclave.orchestration.state_machine import (
     validate_recovery_transition,
     validate_transition,
 )
-from conclave.reviewers.runtime import Assessment, CrossReviewResponse, ReviewerCJudgment
-from conclave.task_packs.comparison import ComparisonRound, compare_assessments
-from conclave.task_packs.models import TaskPack
+from conclave.packs.comparison import ComparisonRound
+from conclave.packs.registry import PackRegistry, default_pack_registry
 
 
 class AuditVerificationError(RuntimeError):
@@ -93,8 +89,13 @@ _EXPECTED_STATE_PREFIXES = {
 
 
 class AuditVerifier:
-    def __init__(self, repository: LedgerRepository) -> None:
+    def __init__(
+        self,
+        repository: LedgerRepository,
+        packs: PackRegistry | None = None,
+    ) -> None:
         self._repository = repository
+        self._packs = packs or default_pack_registry()
 
     def verify_session(self, session_id: str) -> AuditVerification:
         session = self._repository.get_session(session_id)
@@ -167,7 +168,9 @@ class AuditVerifier:
             )
         if canonical_hash(result.document) != result.result_hash:
             raise AuditVerificationError("persisted result hash is invalid")
-        validate_review_result(result.document, snapshot.content)
+        self._packs.for_document(snapshot.content).validate_result(
+            result.document, snapshot.content
+        )
         feedback = self._repository.get_feedback(session_id)
         evaluation = self._repository.get_evaluation_candidate(session_id)
         if feedback is None:
@@ -324,7 +327,8 @@ class AuditVerifier:
         )
         if task_pack_record is None:
             raise AuditVerificationError("pinned task-pack revision is unavailable")
-        task_pack = TaskPack.model_validate(task_pack_record.document)
+        pack = self._packs.for_document(snapshot)
+        task_pack = pack.config_from_document(task_pack_record.document)
         if task_pack.content_hash != session.task_pack_hash:
             raise AuditVerificationError("pinned task-pack hash is invalid")
 
@@ -345,15 +349,14 @@ class AuditVerifier:
                 )
             return match
 
-        def assessment(record) -> Assessment:
-            if (
-                record.stage == ReviewStage.CROSS_REVIEW.value
-                and record.schema_version == "cross-review-v1"
-            ):
-                return CrossReviewResponse.model_validate(
-                    record.assessment_payload
-                ).assessment
-            return Assessment.model_validate(record.assessment_payload)
+        def assessment(record):
+            return pack.assessment_from_output(
+                pack.parse_output(
+                    ReviewStage(record.stage),
+                    record.schema_version,
+                    record.assessment_payload,
+                )
+            )
 
         a_record = record(ReviewerSlot.A, ReviewStage.INDEPENDENT, 1)
         a = assessment(a_record)
@@ -364,10 +367,10 @@ class AuditVerifier:
         else:
             b_record = record(ReviewerSlot.B, ReviewStage.INDEPENDENT, 1)
             b = assessment(b_record)
-            initial = compare_assessments(
+            initial = pack.compare(
                 a,
                 b,
-                task_pack,
+                config=task_pack,
                 failed_goal=(
                     snapshot["review_trigger"]["kind"]
                     == TriggerKind.FAILED_GOAL.value
@@ -399,7 +402,7 @@ class AuditVerifier:
                 )
                 cross_a = assessment(cross_a_record)
                 cross_b = assessment(cross_b_record)
-                cross = compare_assessments(cross_a, cross_b, task_pack)
+                cross = pack.compare(cross_a, cross_b, config=task_pack)
                 expected_rounds = (
                     *expected_rounds,
                     ComparisonRound(
@@ -422,8 +425,10 @@ class AuditVerifier:
                     judgment_record = record(
                         ReviewerSlot.C, ReviewStage.JUDGING, 2
                     )
-                    judgment = ReviewerCJudgment.model_validate(
-                        judgment_record.assessment_payload
+                    judgment = pack.parse_output(
+                        ReviewStage.JUDGING,
+                        judgment_record.schema_version,
+                        judgment_record.assessment_payload,
                     )
                     if judgment.selected_slot == ReviewerSlot.A.value:
                         final = cross_a
@@ -458,19 +463,7 @@ class AuditVerifier:
             invocations,
             session.task_pack_hash,
         )
-        expected_recommendation = {
-            "category": final.category.value,
-            "summary": final.summary,
-            "actions": [
-                action.model_dump(mode="json", exclude_none=False)
-                for action in final.actions
-            ],
-            "experiment": (
-                final.experiment.model_dump(mode="json")
-                if final.experiment is not None
-                else None
-            ),
-        }
+        expected_recommendation = pack.recommendation_document(final)
         if result["recommendation"] != expected_recommendation:
             raise AuditVerificationError(
                 "published recommendation differs from the resolved assessment"
@@ -529,7 +522,7 @@ class AuditVerifier:
         self,
         session_id: str,
         snapshot: dict,
-        assessment: Assessment,
+        assessment,
         session,
     ) -> None:
         revision = next(

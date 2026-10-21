@@ -1,241 +1,77 @@
-import hashlib
-import re
+"""Reviewer runtime: the engine side of a model call.
+
+Domain output models live in packs. Chimera's models and the generic claim
+primitives are re-exported here so existing imports keep working.
+"""
+
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from time import monotonic
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    TypeAdapter,
-    field_validator,
-    model_validator,
+from pydantic import BaseModel, ConfigDict, Field
+
+from conclave.domain.enums import ReviewerSlot, ReviewerType, ReviewStage
+from conclave.packs.chimera.models import (
+    Assessment,
+    AssessmentV2ProviderOutput,
+    CrossReviewResponse,
+    CrossReviewV1ProviderOutput,
+    ExperimentDefinition,
+    RecommendedAction,
+    ReviewerCJudgment,
+    ReviewerCJudgmentV2ProviderOutput,
 )
-
-from conclave.domain.enums import (
-    RecommendationCategory,
-    ReviewerSlot,
-    ReviewerType,
-    ReviewStage,
+from conclave.packs.claims import (
+    AssessmentClaim,
+    PeerClaimReview,
+    assign_assessment_claim_ids,
 )
 from conclave.plans.models import ProviderPolicy
 
+if TYPE_CHECKING:
+    from conclave.packs.registry import PackRegistry
 
-class RecommendedAction(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    type: str = Field(min_length=1)
-    target_id: str = Field(min_length=1)
-    magnitude: float | None = None
-    urgency: Literal["low", "normal", "high"] = "normal"
-    confidence: float = Field(ge=0, le=1)
-
-
-class ExperimentDefinition(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    hypothesis: str = Field(min_length=1)
-    control: str = Field(min_length=1)
-    isolated_change: str = Field(min_length=1)
-    success_metric: str = Field(min_length=1)
-    minimum_evidence: str = Field(min_length=1)
-    exposure_limit: str = Field(min_length=1)
-    stop_conditions: tuple[str, ...] = Field(min_length=1)
-    review_after_hours: float = Field(gt=0)
-
-
-class AssessmentClaim(BaseModel):
-    """One review claim with support from the immutable request snapshot."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    claim_id: str | None = Field(default=None, pattern=r"^clm_[a-f0-9]{24}$")
-    claim_type: Literal[
-        "observation",
-        "inference",
-        "policy_constraint",
-        "uncertainty",
-    ] = "inference"
-    statement: str = Field(min_length=1)
-    evidence_references: tuple[str, ...] = ()
-    alternative_explanations: tuple[str, ...] = ()
-
-    @field_validator("evidence_references", mode="before")
-    @classmethod
-    def canonicalize_array_indexes(cls, value: object) -> object:
-        if isinstance(value, (list, tuple)):
-            return tuple(
-                re.sub(r"\[(\d+)\]", r".\1", item) if isinstance(item, str) else item
-                for item in value
-            )
-        return value
-
-    @model_validator(mode="after")
-    def validate_unique_references(self) -> "AssessmentClaim":
-        if len(self.evidence_references) != len(set(self.evidence_references)):
-            raise ValueError("claim evidence references must be unique")
-        return self
+__all__ = [
+    "Assessment",
+    "AssessmentClaim",
+    "AssessmentV2ProviderOutput",
+    "CrossReviewResponse",
+    "CrossReviewV1ProviderOutput",
+    "ExperimentDefinition",
+    "FakeReviewerRuntime",
+    "PeerAssessment",
+    "PeerClaimReview",
+    "PeerCrossReviewResponse",
+    "PermanentReviewerProviderError",
+    "ProviderAttempt",
+    "ProviderAttemptGuard",
+    "ProviderCallResult",
+    "ProviderRegistryRuntime",
+    "ProviderUsage",
+    "RecommendedAction",
+    "RetryableReviewerProviderError",
+    "ReviewCall",
+    "ReviewOutput",
+    "ReviewerBudgetExceededError",
+    "ReviewerCJudgment",
+    "ReviewerCJudgmentV2ProviderOutput",
+    "ReviewerExecution",
+    "ReviewerProvider",
+    "ReviewerProviderError",
+    "ReviewerProviderExhaustedError",
+    "ReviewerRuntime",
+    "UnknownReviewerProviderError",
+    "assign_assessment_claim_ids",
+]
 
 
-class Assessment(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+ReviewOutput = Any
+"""Any pack-defined reviewer output (assessment, cross-review response or judgment).
 
-    category: RecommendationCategory
-    summary: str = Field(min_length=1)
-    claims: tuple[str | AssessmentClaim, ...] = ()
-    actions: tuple[RecommendedAction, ...] = ()
-    experiment: ExperimentDefinition | None = None
-    material: bool = False
-    risk: Literal["low", "medium", "high"] = "low"
-    confidence: float = Field(ge=0, le=1)
-    evidence_quality: Literal["strong", "adequate", "weak", "insufficient"]
-    expected_goal_impact: Literal["negative", "neutral", "uncertain", "positive"] | None = None
-    tracking_health: Literal["healthy", "degraded", "unhealthy"] | None = None
-    optimization_eligible: bool | None = None
-    primary_conversion: str | None = None
-    missing_evidence: tuple[str, ...] = ()
-    review_after_hours: float | None = Field(default=None, ge=0)
-
-    @model_validator(mode="after")
-    def validate_claim_ids(self) -> "Assessment":
-        claim_ids = [
-            claim.claim_id
-            for claim in self.claims
-            if isinstance(claim, AssessmentClaim) and claim.claim_id is not None
-        ]
-        if len(claim_ids) != len(set(claim_ids)):
-            raise ValueError("assessment claim IDs must be unique")
-        return self
-
-
-def assign_assessment_claim_ids(
-    assessment: Assessment,
-    *,
-    invocation_id: str,
-) -> Assessment:
-    """Normalize provider-authored claim drafts into stored assessment-v2 claims."""
-
-    normalized: list[AssessmentClaim] = []
-    for ordinal, claim in enumerate(assessment.claims, start=1):
-        if isinstance(claim, str):
-            raise ValueError("assessment-v2 claims must be structured")
-        if claim.claim_id is not None:
-            raise ValueError("assessment-v2 claim IDs are assigned by Conclave")
-        digest = hashlib.sha256(f"{invocation_id}|{ordinal}".encode()).hexdigest()[:24]
-        normalized.append(claim.model_copy(update={"claim_id": f"clm_{digest}"}))
-    return assessment.model_copy(update={"claims": tuple(normalized)})
-
-
-class PeerClaimReview(BaseModel):
-    """A cross reviewer's explicit position on one peer-authored claim."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    claim_id: str = Field(pattern=r"^clm_[a-f0-9]{24}$")
-    position: Literal["accept", "challenge", "insufficient_support"]
-    summary: str = Field(min_length=1)
-    evidence_references: tuple[str, ...] = Field(min_length=1)
-
-    @field_validator("evidence_references", mode="before")
-    @classmethod
-    def canonicalize_array_indexes(cls, value: object) -> object:
-        if isinstance(value, (list, tuple)):
-            return tuple(
-                re.sub(r"\[(\d+)\]", r".\1", item) if isinstance(item, str) else item
-                for item in value
-            )
-        return value
-
-    @model_validator(mode="after")
-    def validate_unique_references(self) -> "PeerClaimReview":
-        if len(self.evidence_references) != len(set(self.evidence_references)):
-            raise ValueError("peer-claim evidence references must be unique")
-        return self
-
-
-class CrossReviewResponse(BaseModel):
-    """One bounded cross-review response plus the reviewer's complete assessment."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    disposition: Literal["affirm", "revise"]
-    peer_claim_reviews: tuple[PeerClaimReview, ...] = Field(min_length=1)
-    assessment: Assessment
-
-    @model_validator(mode="after")
-    def validate_peer_claim_ids(self) -> "CrossReviewResponse":
-        claim_ids = [review.claim_id for review in self.peer_claim_reviews]
-        if len(claim_ids) != len(set(claim_ids)):
-            raise ValueError("cross review cannot classify a peer claim more than once")
-        return self
-
-
-class ReviewerCJudgment(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    verdict: Literal[
-        "select_a",
-        "select_b",
-        "synthesize",
-        "insufficient_evidence",
-        "escalate",
-    ]
-    summary: str = Field(min_length=1)
-    selected_slot: Literal["A", "B"] | None = None
-    resolution_assessment: Assessment | None = None
-    confidence: float = Field(ge=0, le=1)
-    evidence_quality: Literal["strong", "adequate", "weak", "insufficient"]
-    supporting_claim_ids: tuple[str, ...] = ()
-    rejected_claim_ids: tuple[str, ...] = ()
-    unresolved_claim_ids: tuple[str, ...] = ()
-    # Retained for exact assessment-v1 history compatibility.
-    unresolved_claims: tuple[str, ...] = ()
-
-    @model_validator(mode="after")
-    def validate_verdict(self) -> "ReviewerCJudgment":
-        classified_ids = (
-            *self.supporting_claim_ids,
-            *self.rejected_claim_ids,
-            *self.unresolved_claim_ids,
-        )
-        if len(classified_ids) != len(set(classified_ids)):
-            raise ValueError("reviewer-C claim classifications must not overlap")
-        if any(not claim_id.startswith("clm_") for claim_id in classified_ids):
-            raise ValueError("reviewer-C claim classifications require claim IDs")
-        expected_slot = {
-            "select_a": "A",
-            "select_b": "B",
-        }.get(self.verdict)
-        if expected_slot is not None:
-            if self.selected_slot != expected_slot:
-                raise ValueError(f"{self.verdict} requires selected_slot={expected_slot}")
-            if self.resolution_assessment is not None:
-                raise ValueError("select verdicts cannot include a resolution assessment")
-            return self
-        if self.selected_slot is not None:
-            raise ValueError(f"{self.verdict} cannot select a reviewer slot")
-        if self.resolution_assessment is None:
-            raise ValueError(f"{self.verdict} requires a resolution assessment")
-        return self
-
-
-class AssessmentV2ProviderOutput(Assessment):
-    """Provider-authored assessment-v2 before Conclave assigns claim IDs."""
-
-    claims: tuple[AssessmentClaim, ...] = Field(min_length=1)
-
-
-class CrossReviewV1ProviderOutput(CrossReviewResponse):
-    assessment: AssessmentV2ProviderOutput
-
-
-class ReviewerCJudgmentV2ProviderOutput(ReviewerCJudgment):
-    resolution_assessment: AssessmentV2ProviderOutput | None = None
-
-
-ReviewOutput = Assessment | CrossReviewResponse | ReviewerCJudgment
+Typed ``Any`` rather than ``BaseModel`` so pydantic carries the pack's concrete
+model through ``ProviderCallResult`` and ``ReviewerExecution`` instead of
+coercing it to a bare ``BaseModel``."""
 
 
 class PeerAssessment(BaseModel):
@@ -244,7 +80,7 @@ class PeerAssessment(BaseModel):
     slot: ReviewerSlot
     stage: ReviewStage
     round: int = Field(ge=1)
-    assessment: Assessment
+    assessment: Any
 
 
 class PeerCrossReviewResponse(BaseModel):
@@ -253,7 +89,7 @@ class PeerCrossReviewResponse(BaseModel):
     slot: ReviewerSlot
     stage: Literal[ReviewStage.CROSS_REVIEW] = ReviewStage.CROSS_REVIEW
     round: int = Field(default=2, ge=1)
-    response: CrossReviewResponse
+    response: Any
 
 
 class ReviewCall(BaseModel):
@@ -279,6 +115,9 @@ class ReviewCall(BaseModel):
     requested_at: datetime
     provider_policy: ProviderPolicy = Field(default_factory=ProviderPolicy)
     attempt_number: int = Field(default=1, ge=1)
+    task_pack_ref: str | None = None
+    """Pack the session runs under. Set by the orchestrator; resolved from the
+    snapshot (then the registry default) for hand-built legacy calls."""
 
 
 class ReviewerRuntime(Protocol):
@@ -405,15 +244,14 @@ class ProviderRegistryRuntime:
         *,
         max_attempts: int = 3,
         attempt_guard: ProviderAttemptGuard | None = None,
+        packs: "PackRegistry | None" = None,
     ) -> None:
         if max_attempts <= 0:
             raise ValueError("max_attempts must be positive")
         self._providers = dict(providers)
         self._max_attempts = max_attempts
         self._attempt_guard = attempt_guard
-        self._assessment_adapter = TypeAdapter(Assessment)
-        self._cross_review_adapter = TypeAdapter(CrossReviewResponse)
-        self._judgment_adapter = TypeAdapter(ReviewerCJudgment)
+        self._packs = packs
 
     def close(self) -> None:
         seen: set[int] = set()
@@ -426,6 +264,13 @@ class ProviderRegistryRuntime:
             if callable(close):
                 close()
 
+    def _pack_registry(self) -> "PackRegistry":
+        if self._packs is None:
+            from conclave.packs.registry import default_pack_registry
+
+            self._packs = default_pack_registry()
+        return self._packs
+
     def review(self, call: ReviewCall) -> ReviewerExecution:
         try:
             provider = self._providers[call.provider]
@@ -433,6 +278,7 @@ class ProviderRegistryRuntime:
             raise UnknownReviewerProviderError(
                 f"reviewer provider {call.provider!r} is not registered"
             ) from exc
+        pack = self._pack_registry().for_call(call)
         maximum_attempts = min(self._max_attempts, call.provider_policy.max_attempts)
         attempts: list[ProviderAttempt] = []
         first_attempt = call.attempt_number
@@ -450,17 +296,7 @@ class ProviderRegistryRuntime:
                     if isinstance(response, ProviderCallResult)
                     else ProviderCallResult(output=response)
                 )
-                adapter = (
-                    self._judgment_adapter
-                    if call.stage == ReviewStage.JUDGING
-                    else (
-                        self._cross_review_adapter
-                        if call.stage == ReviewStage.CROSS_REVIEW
-                        and call.schema_version == "cross-review-v1"
-                        else self._assessment_adapter
-                    )
-                )
-                output = adapter.validate_python(result.output)
+                output = pack.parse_output(call.stage, call.schema_version, result.output)
                 completed_at = datetime.now(UTC)
                 latency_ms = max(
                     int((monotonic() - started_clock) * 1000),

@@ -12,7 +12,7 @@ from conclave.auditing.verification import AuditVerifier
 from conclave.config import Settings
 from conclave.contracts.validation import validate_contract_package
 from conclave.database import create_database_engine, create_session_factory
-from conclave.fixtures import load_design_plan_revisions
+from conclave.fixtures import load_all_plan_revisions
 from conclave.intake import ReviewIntakeService
 from conclave.ledger.repository import LedgerRepository
 from conclave.orchestration.service import FixturePath, ReviewOrchestrator
@@ -255,7 +255,7 @@ def main() -> None:
     repository, scheduler, worker = _runtime(settings)
 
     if args.command == "seed-fixtures":
-        revisions = load_design_plan_revisions()
+        revisions = load_all_plan_revisions()
         for revision in revisions:
             repository.add_plan_revision(revision)
         print(json.dumps({"seeded_plan_revisions": len(revisions)}))

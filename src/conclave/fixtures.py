@@ -10,8 +10,8 @@ from conclave.paths import contracts_root, design_fixtures_root
 from conclave.plans.models import ReviewPlanRevision
 
 
-def load_design_plan_revisions() -> tuple[ReviewPlanRevision, ...]:
-    path = design_fixtures_root() / "review-plan-revision.json"
+def _load_plan_fixture(name: str) -> tuple[ReviewPlanRevision, ...]:
+    path = design_fixtures_root() / name
     with path.open(encoding="utf-8") as source:
         fixture = json.load(source)
     return tuple(
@@ -24,6 +24,22 @@ def load_design_plan_revisions() -> tuple[ReviewPlanRevision, ...]:
         )
         for item in fixture["revisions"]
     )
+
+
+def load_design_plan_revisions() -> tuple[ReviewPlanRevision, ...]:
+    """The chimera (marketing) development plan revisions."""
+
+    return _load_plan_fixture("review-plan-revision.json")
+
+
+def load_cerberus_plan_revisions() -> tuple[ReviewPlanRevision, ...]:
+    """The VORAGO venture-assessment plan: Conclave + cerberus, one provider per seat."""
+
+    return _load_plan_fixture("vorago-venture-plan.json")
+
+
+def load_all_plan_revisions() -> tuple[ReviewPlanRevision, ...]:
+    return (*load_design_plan_revisions(), *load_cerberus_plan_revisions())
 
 
 def load_request_fixture(name: str = "01-normal-healthy.json") -> dict[str, Any]:

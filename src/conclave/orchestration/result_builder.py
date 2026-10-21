@@ -1,57 +1,47 @@
+"""Builds the immutable result document for one review session.
+
+The envelope (ids, disagreement, comparison history, resolution, baseline,
+panel metadata) is the engine's. The ``recommendation`` block, any extra
+top-level fields and the result schema are the pack's.
+"""
+
 from typing import Any
 
-from conclave.contracts.validation import validate_review_result
-from conclave.domain.enums import RecommendationCategory
+from pydantic import BaseModel
+
+from conclave.domain.enums import ReviewStage
 from conclave.ledger.models import (
     RequestSnapshotRecord,
     ReviewerInvocationRecord,
     ReviewSessionRecord,
 )
-from conclave.reviewers.runtime import (
-    Assessment,
-    AssessmentClaim,
-    CrossReviewResponse,
-    ReviewerCJudgment,
-)
-from conclave.task_packs.comparison import ComparisonResult, ComparisonRound
+from conclave.packs.base import ReviewPack
+from conclave.packs.claims import public_claim as _public_claim
+from conclave.packs.comparison import ComparisonResult, ComparisonRound
 
-_AUTO_RESOLVE_CATEGORIES = {
-    RecommendationCategory.OBSERVE,
-    RecommendationCategory.COLLECT_MORE_DATA,
-}
+Assessment = BaseModel
+ReviewerCJudgment = BaseModel
 
 
-def _assessment(invocation: ReviewerInvocationRecord) -> Assessment:
+def _assessment(pack: ReviewPack, invocation: ReviewerInvocationRecord) -> Assessment:
     if invocation.status != "completed" or invocation.assessment_payload is None:
         raise ValueError(f"invocation {invocation.invocation_id!r} has no valid assessment")
-    if (
-        invocation.stage == "cross_review"
-        and invocation.schema_version == "cross-review-v1"
-    ):
-        return CrossReviewResponse.model_validate(
-            invocation.assessment_payload
-        ).assessment
-    return Assessment.model_validate(invocation.assessment_payload)
+    output = pack.parse_output(
+        ReviewStage(invocation.stage),
+        invocation.schema_version,
+        invocation.assessment_payload,
+    )
+    return pack.assessment_from_output(output)
 
 
-def _judgment(invocation: ReviewerInvocationRecord) -> ReviewerCJudgment:
+def _judgment(pack: ReviewPack, invocation: ReviewerInvocationRecord) -> ReviewerCJudgment:
     if invocation.status != "completed" or invocation.assessment_payload is None:
         raise ValueError(f"invocation {invocation.invocation_id!r} has no valid judgment")
-    return ReviewerCJudgment.model_validate(invocation.assessment_payload)
-
-
-def _public_claim(claim: str | AssessmentClaim) -> dict[str, object]:
-    if isinstance(claim, str):
-        return {
-            "statement": claim,
-            "evidence_references": [],
-            "alternative_explanations": [],
-        }
-    return {
-        "statement": claim.statement,
-        "evidence_references": list(claim.evidence_references),
-        "alternative_explanations": list(claim.alternative_explanations),
-    }
+    return pack.parse_output(
+        ReviewStage(invocation.stage),
+        invocation.schema_version,
+        invocation.assessment_payload,
+    )
 
 
 def _find(
@@ -77,6 +67,7 @@ def _find(
 
 def build_review_result(
     *,
+    pack: ReviewPack,
     session: ReviewSessionRecord,
     snapshot: RequestSnapshotRecord,
     invocations: list[ReviewerInvocationRecord],
@@ -95,7 +86,7 @@ def build_review_result(
         stage="independent",
         round_number=1,
     )
-    baseline = _assessment(baseline_invocation)
+    baseline = _assessment(pack, baseline_invocation)
     comparison: ComparisonResult | None = (
         comparisons[-1].comparison if comparisons else None
     )
@@ -107,14 +98,14 @@ def build_review_result(
         disagreement_summary = "Reviewer A completed the non-material review."
     elif path == "ab_agreement":
         final = final_assessment or _assessment(
-            _find(invocations, slot="B", stage="independent", round_number=1)
+            pack, _find(invocations, slot="B", stage="independent", round_number=1)
         )
         disagreement_level = "within_tolerance"
         distance = comparison.distance if comparison is not None else 0.0
         disagreement_summary = "Reviewers A and B remained within tolerance."
     elif path == "cross_review_resolved":
         final = final_assessment or _assessment(
-            _find(invocations, slot="A", stage="cross_review", round_number=2)
+            pack, _find(invocations, slot="A", stage="cross_review", round_number=2)
         )
         disagreement_level = "cross_reviewed"
         distance = (
@@ -125,12 +116,13 @@ def build_review_result(
         disagreement_summary = "A and B completed one bounded cross-review round."
     elif path == "c_tie_broken":
         judgment = judgment or _judgment(
-            _find(invocations, slot="C", stage="judging", round_number=2)
+            pack, _find(invocations, slot="C", stage="judging", round_number=2)
         )
         if final_assessment is not None:
             final = final_assessment
         elif judgment.selected_slot is not None:
             final = _assessment(
+                pack,
                 _find(
                     invocations,
                     slot=judgment.selected_slot,
@@ -157,10 +149,7 @@ def build_review_result(
     can_auto_resolve = (
         auto_resolve_enabled
         and path in {"a_only", "ab_agreement"}
-        and final.category in _AUTO_RESOLVE_CATEGORIES
-        and not final.actions
-        and not final.material
-        and final.risk == "low"
+        and pack.can_auto_resolve(final)
         and not (comparison and comparison.hard_triggers)
     )
     status = "auto_resolved" if can_auto_resolve else "caller_decision_required"
@@ -224,7 +213,7 @@ def build_review_result(
     )
 
     document: dict[str, Any] = {
-        "contract_version": "review-result/v1",
+        "contract_version": pack.result_contract_version,
         "review_session_id": session.session_id,
         "request_idempotency_key": session.idempotency_key,
         "occurrence_id": session.occurrence_id,
@@ -235,18 +224,7 @@ def build_review_result(
         "request_snapshot_hash": snapshot.content_hash,
         "evidence_version": session.evidence_version,
         "status": status,
-        "recommendation": {
-            "category": final.category.value,
-            "summary": final.summary,
-            "actions": [
-                action.model_dump(mode="json", exclude_none=False) for action in final.actions
-            ],
-            "experiment": (
-                final.experiment.model_dump(mode="json")
-                if final.experiment is not None
-                else None
-            ),
-        },
+        "recommendation": pack.recommendation_document(final),
         "claims": [_public_claim(claim) for claim in final.claims],
         "disagreement": {
             "level": disagreement_level,
@@ -255,9 +233,7 @@ def build_review_result(
             "tolerance": request["comparator"]["tolerance"],
             "triggered_by": triggered_by,
             "hard_triggers": (
-                [trigger.value for trigger in comparison.hard_triggers]
-                if comparison is not None
-                else []
+                list(comparison.hard_triggers) if comparison is not None else []
             ),
             "agreements": list(comparison.agreements) if comparison is not None else [],
             "disagreements": (list(comparison.disagreements) if comparison is not None else []),
@@ -271,14 +247,14 @@ def build_review_result(
             "decisive_stage": decisive_stage,
         },
         "baseline": {
-            "category": baseline.category.value,
+            "category": str(baseline.category),
             "changed_by_panel": baseline.category != final.category,
         },
         "confidence": final.confidence,
         "evidence_quality": final.evidence_quality,
         "missing_evidence": list(final.missing_evidence),
         "risk": final.risk,
-        "review_after_hours": final.review_after_hours,
+        **pack.result_extensions(final),
         "panel_metadata": {
             "comparator_profile": request["comparator"]["profile"],
             "routing_mode": routing_mode,
@@ -286,5 +262,5 @@ def build_review_result(
             "tie_breaker": tie_breaker,
         },
     }
-    validate_review_result(document, request)
+    pack.validate_result(document, request)
     return document

@@ -5,10 +5,7 @@ from conclave.contracts.validation import validate_review_request
 from conclave.domain.enums import ReviewState
 from conclave.domain.models import RequestIdentity, ReviewTrigger
 from conclave.ledger.repository import LedgerRepository
-from conclave.task_packs.registry import (
-    TaskPackRegistry,
-    default_task_pack_registry,
-)
+from conclave.packs.registry import PackRegistry, default_pack_registry
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,15 +23,16 @@ class ReviewIntakeService:
     def __init__(
         self,
         repository: LedgerRepository,
-        task_packs: TaskPackRegistry | None = None,
+        packs: PackRegistry | None = None,
     ) -> None:
         self._repository = repository
-        self._task_packs = task_packs or default_task_pack_registry()
+        self._packs = packs or default_pack_registry()
 
     def accept(self, document: dict[str, Any]) -> IntakeResult:
-        validate_review_request(document)
-        task_pack = self._task_packs.get(document["task_pack_ref"])
-        eligibility = self._task_packs.validate_request(document)
+        pack = self._packs.for_document(document)
+        validate_review_request(document, schema_path=pack.request_schema_path)
+        task_pack = pack.config
+        eligibility = pack.validate_request(document)
         self._repository.register_task_pack_revision(
             task_pack_ref=task_pack.task_pack_ref,
             content_hash=task_pack.content_hash,

@@ -53,23 +53,28 @@ def build_reviewer_runtime(settings: Settings) -> ReviewerRuntime:
             max_attempts=2,
         )
     if settings.reviewer_runtime_mode == "multi_provider":
-        if settings.openai_api_key is None or settings.anthropic_api_key is None:
-            raise ValueError(
-                "the multi-provider reviewer runtime requires OpenAI and Anthropic API keys"
+        providers: dict[str, object] = {}
+        if settings.openai_api_key is not None:
+            providers["openai"] = OpenAIResponsesProvider(
+                api_key=settings.openai_api_key,
+                base_url=settings.openai_base_url,
             )
-        return ProviderRegistryRuntime(
-            {
-                "openai": OpenAIResponsesProvider(
-                    api_key=settings.openai_api_key,
-                    base_url=settings.openai_base_url,
-                ),
-                "anthropic": AnthropicMessagesProvider(
-                    api_key=settings.anthropic_api_key,
-                    base_url=settings.anthropic_base_url,
-                ),
-            },
-            max_attempts=2,
-        )
+        if settings.anthropic_api_key is not None:
+            providers["anthropic"] = AnthropicMessagesProvider(
+                api_key=settings.anthropic_api_key,
+                base_url=settings.anthropic_base_url,
+            )
+        if settings.google_api_key is not None:
+            providers["google"] = GeminiInteractionsProvider(
+                api_key=settings.google_api_key,
+                base_url=settings.google_base_url,
+            )
+        if len(providers) < 2:
+            raise ValueError(
+                "the multi-provider reviewer runtime requires at least two of the "
+                "OpenAI, Anthropic and Google API keys"
+            )
+        return ProviderRegistryRuntime(providers, max_attempts=2)  # type: ignore[arg-type]
     if settings.reviewer_runtime_mode == "phase8_pilot":
         prepared = prepare_phase8_safety_boundary(settings)
         openai_api_key = load_phase8_provider_secret(

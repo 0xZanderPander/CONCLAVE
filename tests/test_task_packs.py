@@ -316,9 +316,8 @@ def test_comparator_reproduces_weighted_magnitude_case_and_conservative_merge() 
 
     comparison = compare_assessments(left, right, task_pack)
 
-    assert comparison.dimension_distances[ComparatorDimension.MAGNITUDE_EXPOSURE] == pytest.approx(
-        0.5
-    )
+    magnitude = comparison.dimension_distances[ComparatorDimension.MAGNITUDE_EXPOSURE.value]
+    assert magnitude == pytest.approx(0.5)
     assert comparison.weighted_distance == pytest.approx(0.04)
     assert not comparison.requires_cross_review
     assert comparison.merged_assessment is not None
@@ -352,7 +351,7 @@ def test_comparator_hard_trigger_overrides_weighted_distance() -> None:
 
     assert comparison.distance == 1
     assert comparison.requires_cross_review
-    assert HardTrigger.OPPOSITE_ACTION_DIRECTION in comparison.hard_triggers
+    assert HardTrigger.OPPOSITE_ACTION_DIRECTION.value in comparison.hard_triggers
 
 
 def test_assessment_pair_fixtures_reproduce_comparator_decisions() -> None:
@@ -374,12 +373,12 @@ def test_assessment_pair_fixtures_reproduce_comparator_decisions() -> None:
         assert comparison.weighted_distance == pytest.approx(
             case["expected_weighted_distance"]
         ), case["id"]
-        assert {trigger.value for trigger in comparison.hard_triggers} == set(
+        assert set(comparison.hard_triggers) == set(
             case["expected_hard_triggers"]
         ), case["id"]
         assert comparison.requires_cross_review == case["expected_cross_review"], case["id"]
         for dimension, expected in case["expected_dimensions"].items():
-            assert comparison.dimension_distances[ComparatorDimension(dimension)] == pytest.approx(
+            assert comparison.dimension_distances[dimension] == pytest.approx(
                 expected
             ), case["id"]
         if expected_urgency := case.get("expected_merged_urgency"):

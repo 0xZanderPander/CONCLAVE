@@ -56,10 +56,24 @@ routing from stored reviewer outputs rather than trusting recorded labels;
 per-attempt cost, token and latency telemetry; a typed transport-neutral event
 outbox; a feedback-to-reviewer-evaluation loop.
 
-**Current constraint:** a fixed three-seat protocol over a single domain.
+**Packs (B2).** The engine is one three-seat protocol deployed in multiple
+configurations. Everything domain-shaped lives in a pack under
+`src/conclave/packs/` behind `ReviewPack` (`packs/base.py`): reviewer output
+models, comparator, materiality, vocabulary, seat prompts, provider contract
+table, request and result contracts. Two packs exist:
+
+- `chimera` — marketing ad-performance review (Hyperstructure Marketing). The
+  pre-B2 engine code, moved, not rewritten.
+- `cerberus` — venture-submission assessment (VORAGO). Input
+  `venture-submission/v1`, output `venture-verdict/v1`.
+
+A pack never learns who calls it. Adding a consumer means adding a pack, never
+editing the engine for that consumer.
+
+**Current constraint:** the three-seat protocol itself is still code.
 Reviewer A is routine, Reviewer B is an independent auditor joining on cadence
-or trigger, Reviewer C breaks surviving disagreement. Seats, ordering and wiring
-are code, not configuration.
+or trigger, Reviewer C breaks surviving disagreement. Seat count, ordering and
+wiring are not configuration; only the domain is.
 
 **Panel value over a single strong model is not yet demonstrated.** Current
 results prove plumbing, isolation and auditability. Panel-value metrics are
@@ -75,9 +89,11 @@ as the shape the engine is built around.
 The **34-case deterministic fixture suite is the conformance oracle**. If the
 marketing configuration reproduces all 34 cases identically through the
 generalized engine, the generalization did not change marketing behavior.
+`tests/test_chimera_conformance.py` enforces this byte-for-byte against the
+full ledger capture in `design-fixtures/phase7-golden/`.
 
-Do not modify those fixtures to make a refactor pass. If a fixture must change,
-that is a design finding and needs an explicit decision.
+Do not modify those fixtures or the golden capture to make a refactor pass. If
+either must change, that is a design finding and needs an explicit decision.
 
 See `GLOSSARY.md` for the vocabulary mapping and for exactly where the
 three-seat assumption lives.

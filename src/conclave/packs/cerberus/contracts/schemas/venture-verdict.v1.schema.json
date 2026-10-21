@@ -1,0 +1,397 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://conclave/packs/cerberus/venture-verdict.v1.schema.json",
+  "title": "venture-verdict/v1",
+  "description": "Conclave cerberus pack -> caller. One verdict per run with written feedback for the founder. Carries no authority over the caller's decision, funding or governance.",
+  "type": "object",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "disagreement": {
+            "properties": {
+              "level": {
+                "const": "tie_broken"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": "caller_decision_required"
+          },
+          "panel_metadata": {
+            "properties": {
+              "tie_breaker": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "required": [
+    "contract_version",
+    "review_session_id",
+    "request_idempotency_key",
+    "occurrence_id",
+    "task_pack_ref",
+    "task_pack_hash",
+    "review_plan_ref",
+    "review_plan_revision",
+    "request_snapshot_hash",
+    "evidence_version",
+    "status",
+    "recommendation",
+    "claims",
+    "disagreement",
+    "comparison_history",
+    "resolution",
+    "baseline",
+    "confidence",
+    "evidence_quality",
+    "panel_metadata"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "venture-verdict/v1"
+    },
+    "review_session_id": {
+      "type": "string"
+    },
+    "request_idempotency_key": {
+      "type": "string"
+    },
+    "occurrence_id": {
+      "type": "string"
+    },
+    "task_pack_ref": {
+      "const": "venture-submission/v1"
+    },
+    "task_pack_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "review_plan_ref": {
+      "type": "string"
+    },
+    "review_plan_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "request_snapshot_hash": {
+      "type": "string"
+    },
+    "evidence_version": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "caller_decision_required",
+        "stale_or_ineligible_evidence",
+        "failed"
+      ],
+      "description": "A venture verdict never auto-resolves; the caller owns the decision."
+    },
+    "recommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "summary",
+        "feedback",
+        "scores",
+        "strengths",
+        "weaknesses"
+      ],
+      "properties": {
+        "category": {
+          "enum": [
+            "viable",
+            "not_viable",
+            "needs_revision",
+            "insufficient_information"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "feedback": {
+          "type": "string",
+          "description": "Written to the founder."
+        },
+        "scores": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "problem_clarity",
+            "market_opportunity",
+            "differentiation",
+            "feasibility",
+            "team_capability",
+            "risk_exposure"
+          ],
+          "properties": {
+            "problem_clarity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "market_opportunity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "differentiation": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "feasibility": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "team_capability": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "risk_exposure": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            }
+          }
+        },
+        "strengths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "weaknesses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "statement",
+          "evidence_references"
+        ],
+        "properties": {
+          "statement": {
+            "type": "string"
+          },
+          "evidence_references": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "alternative_explanations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "disagreement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "level",
+        "summary",
+        "distance",
+        "tolerance",
+        "triggered_by",
+        "hard_triggers"
+      ],
+      "properties": {
+        "level": {
+          "enum": [
+            "none",
+            "within_tolerance",
+            "cross_reviewed",
+            "tie_broken"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "distance": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "tolerance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "triggered_by": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "scheduled_a",
+              "scheduled_b",
+              "material_a",
+              "request_material",
+              "recommendation_material_a",
+              "failed_goal",
+              "audit_sample",
+              "hard_conflict",
+              "weighted_distance",
+              "merge_incompatible"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "hard_triggers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "agreements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disagreements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "comparison_history": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "resolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "basis",
+        "decisive_stage"
+      ],
+      "properties": {
+        "basis": {
+          "type": "string"
+        },
+        "decisive_stage": {
+          "enum": [
+            "independent",
+            "cross_review",
+            "judging"
+          ]
+        }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "changed_by_panel"
+      ],
+      "properties": {
+        "category": {
+          "enum": [
+            "viable",
+            "not_viable",
+            "needs_revision",
+            "insufficient_information"
+          ]
+        },
+        "changed_by_panel": {
+          "type": "boolean"
+        }
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "evidence_quality": {
+      "enum": [
+        "strong",
+        "adequate",
+        "weak",
+        "insufficient"
+      ]
+    },
+    "missing_evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "risk": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "panel_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comparator_profile",
+        "routing_mode",
+        "reviewers",
+        "tie_breaker"
+      ],
+      "properties": {
+        "comparator_profile": {
+          "type": "string"
+        },
+        "routing_mode": {
+          "enum": [
+            "fixture",
+            "automatic"
+          ]
+        },
+        "reviewers": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "tie_breaker": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}
