@@ -1,5 +1,5 @@
 {
-  "_comment": "VORAGO deploys Conclave + cerberus. Three providers, one per seat, so no seat reviews its own model's work. Revision 1 is the B2 demo binding; the free-tier Gemini pricing here is a placeholder to be replaced when a paid tier is used. Revision 2 (2026-10-21): prompt p2 (needs_revision is not a default; fanciful submissions are not_viable) and 8,000-token output budget for cross review and judging after Anthropic hit max_tokens on a cross-review response.",
+  "_comment": "VORAGO deploys Conclave + cerberus. Three providers, one per seat, so no seat reviews its own model's work. Revision 1 is the B2 demo binding; Google seat runs on a paid tier (billing enabled 2026-10-21); Gemini 3.6 Flash list pricing $0.75/$3.75 per M tokens. Revision 2 (2026-10-21): prompt p2 (needs_revision is not a default; fanciful submissions are not_viable) and 8,000-token output budget for cross review and judging after Anthropic hit max_tokens on a cross-review response. Gemini thinking tokens count against max_output_tokens (~2.3k thinking for a ~1k answer on a 600-word submission), so seat C carries a 12k independent / 16k judging budget.",
   "plan_id": "rp_vorago_venture",
   "deployment_id": "dep_vorago_assessment",
   "revisions": [
@@ -205,12 +205,12 @@
             "max_attempts": 2,
             "timeout_seconds": 120,
             "max_input_characters": 45000,
-            "max_output_tokens": 4000,
-            "max_cost_usd": 0.25,
+            "max_output_tokens": 12000,
+            "max_cost_usd": 0.4,
             "reasoning_effort": "medium",
-            "input_cost_per_million_usd": 0.0,
-            "output_cost_per_million_usd": 0.0,
-            "pricing_version": "google-gemini-3.6-flash-free-tier-2026-08"
+            "input_cost_per_million_usd": 0.75,
+            "output_cost_per_million_usd": 3.75,
+            "pricing_version": "google-gemini-3.6-flash-2026-10-21"
           },
           "judging_role_version": "venture-judge-c-judge-v1",
           "judging_prompt_version": "venture-judgment-c-p2",
@@ -219,12 +219,12 @@
             "max_attempts": 2,
             "timeout_seconds": 120,
             "max_input_characters": 90000,
-            "max_output_tokens": 8000,
-            "max_cost_usd": 0.4,
+            "max_output_tokens": 16000,
+            "max_cost_usd": 0.6,
             "reasoning_effort": "medium",
-            "input_cost_per_million_usd": 0.0,
-            "output_cost_per_million_usd": 0.0,
-            "pricing_version": "google-gemini-3.6-flash-free-tier-2026-08"
+            "input_cost_per_million_usd": 0.75,
+            "output_cost_per_million_usd": 3.75,
+            "pricing_version": "google-gemini-3.6-flash-2026-10-21"
           }
         }
       },
