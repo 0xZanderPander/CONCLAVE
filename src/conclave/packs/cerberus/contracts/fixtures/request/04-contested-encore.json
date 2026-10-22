@@ -1,0 +1,90 @@
+{
+  "contract_version": "venture-submission/v1",
+  "caller": {
+    "caller_id": "vorago",
+    "auth_subject": "vorago-assessment-service"
+  },
+  "subject": {
+    "submission_id": "sub_encore_01",
+    "founder_ref": "founder_e0c1"
+  },
+  "idempotency_key": "vorago:sub_encore_01:v1",
+  "evidence_version": "sub_encore_01:v1",
+  "review_trigger": {
+    "occurrence_id": "occ_sub_encore_01",
+    "kind": "manual",
+    "due_at": "2026-10-21T22:10:00Z"
+  },
+  "classification": {
+    "evidence": [
+      "sections.evidence"
+    ],
+    "context": [
+      "sections.context"
+    ],
+    "policy": [
+      "sections.policy"
+    ],
+    "goal": [
+      "sections.goal"
+    ],
+    "quality": [
+      "quality"
+    ]
+  },
+  "sections": {
+    "evidence": {
+      "title": "Encore — artist-controlled ticket resale with a hard price cap",
+      "problem": "When a mid-size act sells out a 1,200-cap room, 20 to 30 percent of tickets reappear on resale sites within an hour at two to five times face value. Fans pay the markup, the artist sees none of it, and the room fills with the people who could afford a scalper rather than the fans who queued. Artists have no lever: primary ticketing contracts forbid them from touching resale, and the dominant resale marketplaces profit from the markup.",
+      "solution": "Encore is a fan-to-fan resale exchange the artist turns on per show. Tickets bought through Encore are identity-bound and can only be resold inside Encore at face value plus at most 10 percent, set by the artist. The artist takes a 5 percent cut of every resale, Encore takes 5 percent, the seller gets the rest. Unsold resale listings release back to the artist's waitlist 24 hours before doors. We integrate with the primary ticketer through its official API where one exists and through a barcode re-issue flow where it does not.",
+      "market": "US live music primary ticketing is roughly 12B a year; secondary resale is 4 to 5B with 15 to 25 percent take rates. Our wedge is the 8,000 or so acts that regularly sell out 500 to 3,000 cap rooms, where resale markups are highest and the artist has the most direct fan relationship. A single sold-out 1,200 cap show generates 150 to 300 resale transactions.",
+      "business_model": "5 percent of resale value per transaction, plus a 1 dollar buyer protection fee. Blended revenue per sold-out mid-size show is about 1,100 dollars. Artists pay nothing; venues pay nothing. Expansion revenue from waitlist-to-sale conversion fees and white-label fan-club presales.",
+      "traction": "Live for 14 weeks with six touring acts across 31 shows. 2,900 resale transactions, 412,000 dollars gross resale value, 41,000 dollars net revenue, month-over-month transaction growth of 38 percent. Zero chargebacks. Two artists have asked to make Encore mandatory for their entire 2027 tours. One primary ticketing company has sent a cease-and-desist letter regarding our barcode re-issue flow; our counsel believes the contract clause it relies on is unenforceable against fans in four of the five states where we have operated.",
+      "competition": "StubHub, Vivid Seats and SeatGeek profit from the markup and will not cap it. Ticketmaster's face-value exchange exists but is only offered on a minority of events and the artist controls neither pricing nor data. Dice and other primary ticketers with built-in resale compete for the primary slot, which we do not. Artist fan-club platforms handle presales but not resale. Our defensibility is the artist relationship and the identity-bound ticket, not the technology.",
+      "team": "Three founders. CEO managed two touring acts for nine years and sits on the board of an independent venue association. CTO spent six years as a payments and anti-fraud engineer at a top-three ticketing company and built our identity-binding flow. COO is a former consumer protection attorney who ran the ticketing portfolio at a state attorney general's office. Eleven full-time staff, 1.6M raised in a pre-seed.",
+      "risks": "Primary ticketers can cut off API access or litigate the barcode re-issue flow; the cease-and-desist is the first shot. State resale laws are a patchwork and some states cap or ban price caps. Identity-bound tickets add friction at the door and one bad venue experience goes viral. Fraud and account takeover at scale. If a dominant ticketer launches an artist-controlled face-value exchange across all events, our wedge narrows to the independent-venue segment.",
+      "ask": "We are raising a 6M seed. Tell us honestly whether the legal exposure makes this uninvestable or whether traction and team outweigh it."
+    },
+    "context": {
+      "stage": "early_revenue",
+      "submitted_at": "2026-10-21T21:55:00Z",
+      "geography": "US",
+      "sector": "live music / ticketing"
+    },
+    "policy": {
+      "rubric_version": "venture-rubric/v1",
+      "max_feedback_words": 600,
+      "token_budget": 120000
+    },
+    "goal": {
+      "decision": "viability_assessment",
+      "founder_question": "Does the legal exposure make this uninvestable, or do traction and team outweigh it?"
+    }
+  },
+  "quality": {
+    "total_words": 601,
+    "fields_present": 10,
+    "fields_total": 10,
+    "language": "en",
+    "gate": {
+      "passed": true,
+      "reason": null
+    }
+  },
+  "allowed_recommendations": [
+    "viable",
+    "not_viable",
+    "needs_revision",
+    "insufficient_information"
+  ],
+  "materiality": {
+    "always_material": true
+  },
+  "comparator": {
+    "profile": "venture-submission/v1",
+    "tolerance": 0.25
+  },
+  "task_pack_ref": "venture-submission/v1",
+  "review_plan_ref": "rp_vorago_venture",
+  "review_plan_revision": 2
+}
