@@ -9,6 +9,7 @@ from conclave.reviewers.development import DevelopmentReviewerRuntime
 from conclave.reviewers.gemini import GeminiInteractionsProvider
 from conclave.reviewers.openai import OpenAIResponsesProvider
 from conclave.reviewers.runtime import ProviderRegistryRuntime, ReviewerRuntime
+from conclave.reviewers.vercel_gateway import VercelGatewayProvider
 
 
 def build_reviewer_runtime(settings: Settings) -> ReviewerRuntime:
@@ -69,10 +70,15 @@ def build_reviewer_runtime(settings: Settings) -> ReviewerRuntime:
                 api_key=settings.google_api_key,
                 base_url=settings.google_base_url,
             )
-        if len(providers) < 2:
+        if settings.vercel_gateway_api_key is not None:
+            providers["vercel_gateway"] = VercelGatewayProvider(
+                api_key=settings.vercel_gateway_api_key,
+                base_url=settings.vercel_gateway_base_url,
+            )
+        if len(providers) < 2 and "vercel_gateway" not in providers:
             raise ValueError(
                 "the multi-provider reviewer runtime requires at least two of the "
-                "OpenAI, Anthropic and Google API keys"
+                "OpenAI, Anthropic and Google API keys, or a Vercel AI Gateway key"
             )
         return ProviderRegistryRuntime(providers, max_attempts=2)  # type: ignore[arg-type]
     if settings.reviewer_runtime_mode == "phase8_pilot":

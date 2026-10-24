@@ -1,5 +1,5 @@
 {
-  "_comment": "VORAGO deploys Conclave + cerberus. Three providers, one per seat, so no seat reviews its own model's work. Revision 1 is the B2 demo binding; Google seat runs on a paid tier (billing enabled 2026-10-21); Gemini 3.6 Flash list pricing $0.75/$3.75 per M tokens. Revision 2 (2026-10-21): prompt p2 (needs_revision is not a default; fanciful submissions are not_viable) and 8,000-token output budget for cross review and judging after Anthropic hit max_tokens on a cross-review response. Gemini thinking tokens count against max_output_tokens (~2.3k thinking for a ~1k answer on a 600-word submission), so seat C carries a 12k independent / 16k judging budget. Revision 2 as seeded on 2026-10-21 is frozen here (the ledger refuses to mutate a seeded revision); revision 3 carries the paid-tier Google seat budgets and pricing.",
+  "_comment": "VORAGO deploys Conclave + cerberus. Three providers, one per seat, so no seat reviews its own model's work. Revision 1 is the B2 demo binding; Google seat runs on a paid tier (billing enabled 2026-10-21); Gemini 3.6 Flash list pricing $0.75/$3.75 per M tokens. Revision 2 (2026-10-21): prompt p2 (needs_revision is not a default; fanciful submissions are not_viable) and 8,000-token output budget for cross review and judging after Anthropic hit max_tokens on a cross-review response. Gemini thinking tokens count against max_output_tokens (~2.3k thinking for a ~1k answer on a 600-word submission), so seat C carries a 12k independent / 16k judging budget. Revision 2 as seeded on 2026-10-21 is frozen here (the ledger refuses to mutate a seeded revision); revision 3 carries the paid-tier Google seat budgets and pricing. Revision 4: Same seats, prompts, budgets and per-call ceilings as r3, routed through Vercel AI Gateway (provider vercel_gateway, vendor-prefixed models). Not live: VORAGO pins revision 3 until Al switches CONCLAVE_REVIEW_PLAN_REVISION=4. Gateway pricing assumed pass-through at list price; confirm against the first gateway invoice.",
   "plan_id": "rp_vorago_venture",
   "deployment_id": "dep_vorago_assessment",
   "revisions": [
@@ -342,6 +342,123 @@
             "input_cost_per_million_usd": 0.75,
             "output_cost_per_million_usd": 3.75,
             "pricing_version": "google-gemini-3.6-flash-2026-10-21"
+          }
+        }
+      },
+      "panel_expansion": {
+        "invoke_b_on_request_material": true,
+        "invoke_b_on_recommendation_material": true,
+        "invoke_b_on_failed_goal": true,
+        "nonmaterial_audit_sample_rate": 0.0
+      },
+      "auto_resolve_enabled": false,
+      "cross_review_rounds": 1
+    },
+    {
+      "revision": 4,
+      "effective_at": "2026-10-24T00:00:00Z",
+      "timezone": "America/Chicago",
+      "evidence_delivery": "caller_push",
+      "slots": {
+        "A": {
+          "cadence": "PT1H",
+          "provider": "vercel_gateway",
+          "model": "openai/gpt-5.6-terra",
+          "role_version": "venture-assessor-a-v1",
+          "prompt_version": "venture-assessment-a-p2",
+          "schema_version": "venture-assessment-v1",
+          "provider_policy": {
+            "max_attempts": 2,
+            "timeout_seconds": 120,
+            "max_input_characters": 45000,
+            "max_output_tokens": 4000,
+            "max_cost_usd": 0.25,
+            "reasoning_effort": "medium",
+            "input_cost_per_million_usd": 2.5,
+            "output_cost_per_million_usd": 15.0,
+            "pricing_version": "vercel-gateway-passthrough-openai-2026-07-27"
+          },
+          "anchor_at": "2026-10-21T00:00:00Z",
+          "cross_review_role_version": "venture-cross-assessor-a-v1",
+          "cross_review_prompt_version": "venture-cross-review-a-p2",
+          "cross_review_schema_version": "venture-cross-review-v1",
+          "cross_review_provider_policy": {
+            "max_attempts": 2,
+            "timeout_seconds": 120,
+            "max_input_characters": 60000,
+            "max_output_tokens": 8000,
+            "max_cost_usd": 0.4,
+            "reasoning_effort": "medium",
+            "input_cost_per_million_usd": 2.5,
+            "output_cost_per_million_usd": 15.0,
+            "pricing_version": "vercel-gateway-passthrough-openai-2026-07-27"
+          }
+        },
+        "B": {
+          "cadence": "PT1H",
+          "provider": "vercel_gateway",
+          "model": "anthropic/claude-sonnet-5",
+          "role_version": "venture-auditor-b-v1",
+          "prompt_version": "venture-assessment-b-p2",
+          "schema_version": "venture-assessment-v1",
+          "provider_policy": {
+            "max_attempts": 2,
+            "timeout_seconds": 120,
+            "max_input_characters": 45000,
+            "max_output_tokens": 4000,
+            "max_cost_usd": 0.25,
+            "reasoning_effort": "medium",
+            "input_cost_per_million_usd": 2.0,
+            "output_cost_per_million_usd": 10.0,
+            "pricing_version": "vercel-gateway-passthrough-anthropic-sonnet-5-intro-2026-06-30"
+          },
+          "anchor_at": "2026-10-21T00:00:00Z",
+          "cross_review_role_version": "venture-cross-auditor-b-v1",
+          "cross_review_prompt_version": "venture-cross-review-b-p2",
+          "cross_review_schema_version": "venture-cross-review-v1",
+          "cross_review_provider_policy": {
+            "max_attempts": 2,
+            "timeout_seconds": 120,
+            "max_input_characters": 60000,
+            "max_output_tokens": 8000,
+            "max_cost_usd": 0.4,
+            "reasoning_effort": "medium",
+            "input_cost_per_million_usd": 2.0,
+            "output_cost_per_million_usd": 10.0,
+            "pricing_version": "vercel-gateway-passthrough-anthropic-sonnet-5-intro-2026-06-30"
+          }
+        },
+        "C": {
+          "cadence": "event_only",
+          "provider": "vercel_gateway",
+          "model": "google/gemini-3.6-flash",
+          "role_version": "venture-judge-c-blind-v1",
+          "prompt_version": "venture-assessment-c-p2",
+          "schema_version": "venture-assessment-v1",
+          "provider_policy": {
+            "max_attempts": 2,
+            "timeout_seconds": 120,
+            "max_input_characters": 45000,
+            "max_output_tokens": 12000,
+            "max_cost_usd": 0.4,
+            "reasoning_effort": "medium",
+            "input_cost_per_million_usd": 0.75,
+            "output_cost_per_million_usd": 3.75,
+            "pricing_version": "vercel-gateway-passthrough-google-gemini-3.6-flash-2026-10-21"
+          },
+          "judging_role_version": "venture-judge-c-judge-v1",
+          "judging_prompt_version": "venture-judgment-c-p2",
+          "judging_schema_version": "venture-judgment-v1",
+          "judging_provider_policy": {
+            "max_attempts": 2,
+            "timeout_seconds": 120,
+            "max_input_characters": 90000,
+            "max_output_tokens": 16000,
+            "max_cost_usd": 0.6,
+            "reasoning_effort": "medium",
+            "input_cost_per_million_usd": 0.75,
+            "output_cost_per_million_usd": 3.75,
+            "pricing_version": "vercel-gateway-passthrough-google-gemini-3.6-flash-2026-10-21"
           }
         }
       },
