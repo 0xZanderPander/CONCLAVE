@@ -8,6 +8,7 @@ DEFAULT_LOG_LEVEL = "INFO"
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1"
 DEFAULT_GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+DEFAULT_VERCEL_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1"
 
 
 def _integer(values: Mapping[str, str], name: str, default: int) -> int:
@@ -41,6 +42,8 @@ class Settings:
     anthropic_base_url: str = DEFAULT_ANTHROPIC_BASE_URL
     google_api_key: str | None = field(default=None, repr=False)
     google_base_url: str = DEFAULT_GOOGLE_BASE_URL
+    vercel_gateway_api_key: str | None = field(default=None, repr=False)
+    vercel_gateway_base_url: str = DEFAULT_VERCEL_GATEWAY_BASE_URL
     phase8_cohort_manifest_path: str | None = None
     phase8_case_packages_dir: str | None = None
     phase8_access_manifest_path: str | None = None
@@ -88,10 +91,13 @@ class Settings:
                 if key
             )
             < 2
+            # The gateway reaches every vendor through one key, so on its
+            # own it already satisfies the "more than one lab" requirement.
+            and not self.vercel_gateway_api_key
         ):
             raise ValueError(
                 "the multi-provider reviewer runtime requires at least two of the "
-                "OpenAI, Anthropic and Google API keys"
+                "OpenAI, Anthropic and Google API keys, or a Vercel AI Gateway key"
             )
         if self.reviewer_runtime_mode == "phase8_pilot":
             if self.environment != "pilot":
@@ -170,6 +176,11 @@ class Settings:
             google_base_url=values.get(
                 "CONCLAVE_GOOGLE_BASE_URL",
                 DEFAULT_GOOGLE_BASE_URL,
+            ),
+            vercel_gateway_api_key=values.get("CONCLAVE_VERCEL_GATEWAY_API_KEY"),
+            vercel_gateway_base_url=values.get(
+                "CONCLAVE_VERCEL_GATEWAY_BASE_URL",
+                DEFAULT_VERCEL_GATEWAY_BASE_URL,
             ),
             phase8_cohort_manifest_path=values.get("CONCLAVE_PHASE8_COHORT_MANIFEST_PATH"),
             phase8_case_packages_dir=values.get("CONCLAVE_PHASE8_CASE_PACKAGES_DIR"),

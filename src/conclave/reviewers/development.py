@@ -166,7 +166,7 @@ class DevelopmentReviewerProvider:
 class DevelopmentReviewerRuntime(ProviderRegistryRuntime):
     """Local provider registry used by the fixture API and worker process."""
 
-    PROVIDER_NAMES = ("fixture", "deterministic", "openai", "anthropic", "google")
+    PROVIDER_NAMES = ("fixture", "deterministic", "openai", "anthropic", "google", "vercel_gateway")
 
     def __init__(self) -> None:
         provider = DevelopmentReviewerProvider()
